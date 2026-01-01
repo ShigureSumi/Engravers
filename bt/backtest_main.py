@@ -15,78 +15,108 @@ from news_feed import NewsFeed
 
 class LlamaCppClient:
     def __init__(self, model_path, model_type="standard", context_window=2048):
-        self.model_type = model_type
-        print(f"🤖 Loading LLM from {model_path} (Type: {model_type})...")
-        try:
-            self.llm = Llama(
-                model_path=model_path,
-                n_ctx=context_window,
-                n_gpu_layers=-1, # Offload all layers to GPU if available
-                verbose=False
-            )
-        except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            self.llm = None
+        # Support multiple agents (list of paths/types)
+        self.model_paths = model_path if isinstance(model_path, list) else [model_path]
+        self.model_types = model_type if isinstance(model_type, list) else [model_type]
+        
+        # Broadcast model_type if single string provided for multiple paths
+        if len(self.model_types) == 1 and len(self.model_paths) > 1:
+            self.model_types = self.model_types * len(self.model_paths)
+            
+        self.agents = []
+        print(f"🤖 Loading {len(self.model_paths)} LLM agent(s)...")
+        
+        for path, m_type in zip(self.model_paths, self.model_types):
+            print(f"   - Loading {path} (Type: {m_type})...")
+            try:
+                llm = Llama(
+                    model_path=path,
+                    n_ctx=context_window,
+                    n_gpu_layers=-1, # Offload all layers to GPU if available
+                    verbose=False
+                )
+                self.agents.append({'llm': llm, 'type': m_type})
+            except Exception as e:
+                print(f"❌ Error loading model {path}: {e}")
 
     def get_decision(self, context_text):
-        if not self.llm:
+        if not self.agents:
             return "HOLD"
 
-        # Construct Prompt based on model type
-        if self.model_type == "reasoning":
-            # For reasoning models (e.g., DeepSeek-R1), allow free thought
-            prompt = f"""
-            Analyze the following financial data and news for the commodity.
+        votes = []
+        for agent in self.agents:
+            llm = agent['llm']
+            m_type = agent['type']
             
-            Context:
-            {context_text}
+            # Construct Prompt based on model type
+            if m_type == "reasoning":
+                # For reasoning models (e.g., DeepSeek-R1), allow free thought
+                prompt = f"""
+                Analyze the following financial data and news for the commodity.
+                
+                Context:
+                {context_text}
+                
+                Think step-by-step about the market trend, sentiment, and risks.
+                Finally, provide a trading decision: BUY, SELL, or HOLD.
+                
+                Output your final decision in the last paragraph clearly.
+                """
+            else:
+                # Standard mode
+                prompt = f"""
+                You are a financial trading assistant. Analyze the data below and decide whether to BUY, SELL, or HOLD.
+                
+                Context:
+                {context_text}
+                
+                Provide a short analysis. Then, on a new line, output exactly one word: BUY, SELL, or HOLD.
+                """
+
+            # Generate
+            try:
+                output = llm(
+                    prompt,
+                    max_tokens=256,
+                    stop=["User:", "\\n\\n\\n"],
+                    echo=False
+                )
+                response_text = output['choices'][0]['text'].strip()
+            except Exception as e:
+                print(f"⚠️ Agent error: {e}")
+                response_text = ""
             
-            Think step-by-step about the market trend, sentiment, and risks.
-            Finally, provide a trading decision: BUY, SELL, or HOLD.
+            # Parse Decision (Search for keywords)
+            response_upper = response_text.upper()
             
-            Output your final decision in the last paragraph clearly.
-            """
+            # Map decisions to values: HOLD=0, SELL=-1, BUY=1
+            decisions_map = {"BUY": 1, "SELL": -1, "HOLD": 0}
+            found_indices = {k: response_upper.rfind(k) for k in decisions_map}
+            
+            # Find the keyword that appears last in the text
+            best_decision = max(found_indices, key=found_indices.get)
+            
+            if found_indices[best_decision] == -1:
+                # No keyword found, default to HOLD (0)
+                vote = 0
+            else:
+                vote = decisions_map[best_decision]
+            
+            votes.append(vote)
+            
+        # Voting Logic: Take average and decide
+        if not votes:
+            return "HOLD"
+            
+        avg_vote = sum(votes) / len(votes)
+        
+        # Thresholds for decision
+        if avg_vote > 0.5:
+            return "BUY"
+        elif avg_vote < -0.5:
+            return "SELL"
         else:
-            # Standard mode
-            prompt = f"""
-            You are a financial trading assistant. Analyze the data below and decide whether to BUY, SELL, or HOLD.
-            
-            Context:
-            {context_text}
-            
-            Provide a short analysis. Then, on a new line, output exactly one word: BUY, SELL, or HOLD.
-            """
-
-        # Generate
-        output = self.llm(
-            prompt,
-            max_tokens=256,
-            stop=["User:", "\n\n\n"],
-            echo=False
-        )
-        
-        response_text = output['choices'][0]['text'].strip()
-        # print(f"📝 LLM Thought:\n{response_text}\n{'-'*20}")
-        
-        # Parse Decision (Search for keywords)
-        # We look for the last occurrence of the keywords to capture the final conclusion
-        response_upper = response_text.upper()
-        
-        # Simple keyword scoring or last-found priority
-        decisions = {"BUY": -1, "SELL": -1, "HOLD": -1}
-        
-        for d in decisions:
-            decisions[d] = response_upper.rfind(d)
-            
-        # Find the keyword that appears last in the text
-        best_decision = max(decisions, key=decisions.get)
-        
-        if decisions[best_decision] == -1:
-            # No keyword found
-            print("⚠️ LLM did not output a clear decision. Defaulting to HOLD.")
             return "HOLD"
-            
-        return best_decision
 
 class HybridClient:
     """
