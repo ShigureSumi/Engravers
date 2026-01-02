@@ -1,0 +1,27 @@
+[backtest]
+start_date = "2020-01-01"
+end_date = "2024-01-01"
+initial_cash = 100000.0
+commission = 0.001  # 0.1%
+
+[strategy]
+# Strategy specific parameters can go here
+period = 14
+news_file = "news.csv"
+news_func = "get_news"
+
+[llm]
+# Single model example:
+# model_path = "model.gguf"
+# model_type = "standard"
+
+# Multiple agents example (Voting Mode):
+# Voting Logic:
+# - Each agent votes: BUY=1, SELL=-1, HOLD=0
+# - Votes are averaged.
+# - Decision: BUY if avg > 0.5, SELL if avg < -0.5, else HOLD.
+model_path = ["model1.gguf", "model2.gguf", "model3.gguf"]
+model_type = ["standard", "reasoning", "standard"] 
+# If only one type is provided for multiple paths, it applies to all.
+
+context_window = 2048
