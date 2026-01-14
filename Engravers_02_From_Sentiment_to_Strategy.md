@@ -46,9 +46,11 @@ Our most significant architectural change is the introduction of **Stateful Memo
 
 To improve the quality of our fine-tuning data, we moved beyond static labels to a **Self-Reflective Data Generation** process:
 1.  **Teacher-Student Loop:** We use the base model to predict scores on the training set.
-2.  **Error Detection:** If the model's prediction diverges significantly from the Ground Truth (Market Return), the script appends a **Reflection Block** to the training sample.
-    *   *Example:* "Model predicted Bearish, but Market rallied +2%. **Reflection:** The RSI was oversold, overriding the bearish news."
-3.  **Outcome:** The fine-tuned model (Student) learns not just the rule, but the *exception* logic, effectively "learning from its past mistakes" before they happen in live trading.
+2.  **Dual-Path Reasoning (Rationale & Reflection):** We generate synthetic reasoning chains for every sample.
+    *   **Rationale (Positive Reinforcement):** If the teacher model aligns with the market return, we generate a "Rationale" explaining *why* the setup worked.
+    *   **Reflection (Error Correction):** If the model diverges (e.g., predicted Bearish, but Market rallied), we generate a "Reflection" analyzing the missed signals (e.g., "RSI was oversold, overriding the bearish news").
+3.  **Dynamic Scoring:** Ground truth sentiment scores are now dynamically calculated from T+1 returns (`Score = Clip(Return * 500, -5, 5)`), ensuring labels mathematically align with realized volatility rather than subjective annotation.
+4.  **Outcome:** The fine-tuned model (Student) learns not just the rule, but the *exception* logic, effectively "learning from its past mistakes" before they happen in live trading.
 
 ## 3. Preliminary Experiments & Results
 
@@ -63,6 +65,8 @@ To improve the quality of our fine-tuning data, we moved beyond static labels to
 We optimized our stack for high-performance deployment:
 *   **Training Hardware:** **RTX 5090 (24GB)**. The massive VRAM allows for full parameter fine-tuning or high-rank LoRA, ensuring the model captures deep macro relationships.
 *   **Inference Hardware:** **Tesla V100 (16GB)**. The optimized inference scripts (`generate_enhanced_dataset.py`, `run_backtest_sliding.py`) fit comfortably within 16GB VRAM using 4-bit quantization.
+*   **Data Engineering:** Transiting to an **Offline-First** architecture. We implemented a robust caching layer for `yfinance` data (incremental CSV updates) to ensure reproducibility and reliability in restricted network environments.
+*   **Flexible Configuration:** Refactored the codebase to use CLI arguments (`argparse`), allowing for seamless switching between local paths and model versions without code modification.
 *   **Libraries:** `Unsloth` for 2x faster training, `Pandas/YFinance` for data engineering, and `Matplotlib` for visualizing the Alpha/Sharpe metrics.
 
 ## 4. Conclusion
