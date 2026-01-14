@@ -101,7 +101,16 @@ def prepare_data():
                     f"Local data insufficient. Downloading missing range: {last_date} to {DOWNLOAD_END_DATE}..."
                 )
                 try:
-                    start_missing = last_date + timedelta(days=1)
+                    # Check if we need history BEFORE current local start (e.g. for indicators)
+                    req_start = pd.Timestamp(START_DATE)
+                    lookback_start = req_start - pd.Timedelta(days=365)
+                    
+                    if gold.index.min() > lookback_start:
+                         print(f"Local data starts {gold.index.min()}, need {lookback_start}. Re-downloading full history...")
+                         start_missing = lookback_start
+                    else:
+                         start_missing = last_date + timedelta(days=1)
+
                     if start_missing <= required_end:
                         new_data = yf.download(
                             "GC=F",
@@ -129,13 +138,17 @@ def prepare_data():
                 print("Local data is sufficient for generation range.")
 
     if gold is None:
+        # Determine effective start date (User Request - 365 Days for Indicators)
+        req_start = pd.Timestamp(START_DATE)
+        lookback_start = req_start - pd.Timedelta(days=365)
+        
         if not ENABLE_DOWNLOAD:
             raise RuntimeError(
                 f"No local data at {CACHE_FILE} and downloading disabled."
             )
-        print("Downloading Market Data...")
+        print(f"Downloading Market Data (including history from {lookback_start.date()})...")
         gold = yf.download(
-            "GC=F", start=START_DATE, end=DOWNLOAD_END_DATE, progress=False
+            "GC=F", start=lookback_start, end=DOWNLOAD_END_DATE, progress=False
         )
         if isinstance(gold.columns, pd.MultiIndex):
             gold.columns = gold.columns.get_level_values(0)
@@ -296,23 +309,27 @@ If your analysis contradicts the market reality, provide a reflection.
 
         if diff > 2.0:  # Threshold for "Too Different"
             # Generate Reflection (Correction)
-            # We explicitly use the reflection prompt to contextualize the error in the training data
+            direction_pred = "Bullish" if pred_score > 0 else "Bearish"
+            tech_signal = "Overbought" if row['RSI'] > 70 else ("Oversold" if row['RSI'] < 30 else "Neutral")
+            
             reflection_note = (
                 f"\n\n[Reflection]\n"
                 f"Model Prediction: {pred_score}\n"
-                f"Actual Market Score: {true_score:.2f}\n"
-                f"Reasoning: The initial prediction ({pred_score}) diverged significantly from the market reality ({true_score:.2f}). "
-                f"Technical context: {tech_context} combined with the news flow suggests "
-                f"a different directional move than anticipated. Adjusting weight on key news drivers."
+                f"Actual Market Score: {true_score:.2f} ({trend})\n"
+                f"Analysis:\n"
+                f"1. News Sentiment: The headlines suggested a {direction_pred} bias, but the market disagreed.\n"
+                f"2. Technical Context: {tech_context} signaled {tech_signal}.\n"
+                f"3. Merged View: The technicals likely overpowered the news narrative here. "
+                f"Correction: Shift weight to price action when indicators are extreme."
             )
             final_response += reflection_note
         else:
-            # Generate Standard Rationale (Confirmation)
-            # The model was close enough, so we reinforce the link between indicators/news and the score
+            # Generate Rationale (Confirmation)
             rationale_note = (
                 f"\n\n[Rationale]\n"
-                f"The market sentiment ({true_score:.2f}) is supported by the technical structure. "
-                f"{tech_context} indicates a {trend} momentum that aligns with the impact of the provided news headlines."
+                f"1. News Alignment: Headlines correctly identified the key market driver (Trend: {trend}).\n"
+                f"2. Technical Confirmation: {tech_context} supported the move.\n"
+                f"3. Conclusion: Strong convergence between macro sentiment and technical structure."
             )
             final_response += rationale_note
 
