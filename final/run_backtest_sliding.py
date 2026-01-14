@@ -149,6 +149,11 @@ def prepare_daily_data():
 
     # Calculate Indicators
     gold = compute_technical_indicators(gold)
+    
+    # Ensure index is timezone-naive for merging
+    if gold.index.tz is not None:
+        gold.index = gold.index.tz_localize(None)
+
     valid_dates = pd.DatetimeIndex(gold.index).normalize()
 
     # 3. Align News to Trading Days
