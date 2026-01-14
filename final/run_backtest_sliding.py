@@ -17,6 +17,7 @@ DEFAULT_START_DATE = "2025-09-01"  # Q4 Backtest
 DEFAULT_END_DATE = "2025-12-31"
 DEFAULT_DOWNLOAD_END_DATE = "2026-01-10"
 DEFAULT_WINDOW_SIZE = 3
+DEFAULT_REASONING_MODE = "step-by-step"  # "step-by-step" or "thinking"
 
 # Global variables to be populated by args
 MODEL_PATH = DEFAULT_MODEL_PATH
@@ -26,6 +27,7 @@ START_DATE = DEFAULT_START_DATE
 END_DATE = DEFAULT_END_DATE
 DOWNLOAD_END_DATE = DEFAULT_DOWNLOAD_END_DATE
 WINDOW_SIZE = DEFAULT_WINDOW_SIZE
+REASONING_MODE = DEFAULT_REASONING_MODE
 ENABLE_DOWNLOAD = False
 
 
@@ -235,12 +237,14 @@ def run_backtest():
             history_text += f"Technicals: {row['Technicals']}\n"
             history_text += f"News:\n{row['News']}\n"
 
-        prompt = f"""### Instruction:
-You are a Macro Quant Strategist. 
+        if REASONING_MODE == "thinking":
+            prompt = f"""### Instruction:
+You are a Macro Quant Strategist.
 1. Analyze the market data history below (Window of {WINDOW_SIZE} days).
 2. Consider the 'Long Term Memory' of key drivers.
-3. Predict the sentiment score for TODAY ({current_date.strftime('%Y-%m-%d')}) from -5 (Bearish) to +5 (Bullish).
-4. Update the 'Long Term Memory' (max 200 chars) with any CRITICAL new structural drivers (e.g. "War started", "Fed cut rates"). If nothing changed, keep it same.
+3. Engage in a deep thinking process about the market dynamics.
+4. Predict the sentiment score for TODAY ({current_date.strftime('%Y-%m-%d')}) from -5 (Bearish) to +5 (Bullish).
+5. Update the 'Long Term Memory' (max 200 chars).
 
 ### Long Term Memory (Persistent Context):
 {long_term_memory}
@@ -249,25 +253,57 @@ You are a Macro Quant Strategist.
 {history_text}
 
 ### Response:
+<think>
+[Your internal monologue and analysis goes here]
+</think>
+Score: [Your Score]
+Memory_Update: [Brief Summary]"""
+
+        else:  # step-by-step (default)
+            prompt = f"""### Instruction:
+You are a Macro Quant Strategist.
+1. Analyze the market data history below (Window of {WINDOW_SIZE} days).
+2. Consider the 'Long Term Memory' of key drivers.
+3. Provide step-by-step reasoning for your prediction.
+4. Predict the sentiment score for TODAY ({current_date.strftime('%Y-%m-%d')}) from -5 (Bearish) to +5 (Bullish).
+5. Update the 'Long Term Memory' (max 200 chars).
+
+### Long Term Memory (Persistent Context):
+{long_term_memory}
+
+### Input (Sliding Window):
+{history_text}
+
+### Response:
+Reasoning:
+1. [Step 1]
+2. [Step 2]
+...
 Score: [Your Score]
 Memory_Update: [Brief Summary]"""
 
         # Inference
         inputs = tokenizer([prompt], return_tensors="pt").to("cuda")
         outputs = model.generate(
-            **inputs, max_new_tokens=128, use_cache=True
-        )  # Increased tokens for memory update
+            **inputs, max_new_tokens=256, use_cache=True
+        )  # Increased tokens for reasoning
         out_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
 
         # Parse Score & Memory
         try:
             response_part = out_text.split("### Response:")[-1].strip()
 
-            # Parse Score
+            # Parse Score - Adaptive search (finds "Score:" anywhere in response)
             import re
-
-            score_match = re.search(r"Score:\s*(-?\d+(\.\d+)?)", response_part)
-            score = float(score_match.group(1)) if score_match else 0.0
+            
+            # Look for Score: X.X at the end or typically formatted
+            score_matches = list(re.finditer(r"Score:\s*(-?\d+(\.\d+)?)", response_part))
+            if score_matches:
+                # Use the last occurrence in case "Score" is mentioned in reasoning
+                score_match = score_matches[-1]
+                score = float(score_match.group(1))
+            else:
+                score = 0.0
 
             # Parse Memory Update
             memory_match = re.search(r"Memory_Update:(.*)", response_part, re.DOTALL)
@@ -443,6 +479,13 @@ if __name__ == "__main__":
         default=DEFAULT_WINDOW_SIZE,
         help="Sliding window size in days",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default=DEFAULT_REASONING_MODE,
+        choices=["thinking", "step-by-step"],
+        help="Reasoning mode: 'thinking' (internal monologue) or 'step-by-step' (structured reasoning)",
+    )
 
     args = parser.parse_args()
 
@@ -455,5 +498,6 @@ if __name__ == "__main__":
     END_DATE = args.end_date
     DOWNLOAD_END_DATE = args.download_end_date
     WINDOW_SIZE = args.window_size
+    REASONING_MODE = args.mode
 
     run_backtest()

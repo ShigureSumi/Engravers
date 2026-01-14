@@ -259,6 +259,29 @@ If your analysis contradicts the market reality, provide a reflection.
 ### Response:
 """
 
+    reflection_template = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+You are a Senior Financial Analyst.
+The AI model predicted a sentiment score of {pred_score} based on the news, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
+The model prediction was incorrect.
+Analyze the provided News Headlines and Technical Indicators.
+Write a "Reflection" explaining why the market moved differently from the prediction.
+Your response MUST be structured with exactly these three sections:
+1. Technical Analysis: Analyze the technical indicators (RSI, BB, etc.).
+2. News Analysis: Analyze the news sentiment and why it might have been priced in or ignored.
+3. Merged Conclusion: Synthesize the two views to explain the market move.
+
+### Input:
+{input_text}
+
+### Response:
+[Reflection]
+Model Prediction: {pred_score}
+Actual Market Score: {true_score:.2f} ({trend})
+Analysis:
+"""
+
     for date, row in tqdm(df.iterrows(), total=len(df)):
         # Construct Input String
         tech_str = (
@@ -308,21 +331,28 @@ If your analysis contradicts the market reality, provide a reflection.
         )
 
         if diff > 2.0:  # Threshold for "Too Different"
-            # Generate Reflection (Correction)
-            direction_pred = "Bullish" if pred_score > 0 else "Bearish"
-            tech_signal = "Overbought" if row['RSI'] > 70 else ("Oversold" if row['RSI'] < 30 else "Neutral")
-            
-            reflection_note = (
-                f"\n\n[Reflection]\n"
-                f"Model Prediction: {pred_score}\n"
-                f"Actual Market Score: {true_score:.2f} ({trend})\n"
-                f"Analysis:\n"
-                f"1. News Sentiment: The headlines suggested a {direction_pred} bias, but the market disagreed.\n"
-                f"2. Technical Context: {tech_context} signaled {tech_signal}.\n"
-                f"3. Merged View: The technicals likely overpowered the news narrative here. "
-                f"Correction: Shift weight to price action when indicators are extreme."
+            # Generate Reflection (Correction) using LLM
+            ref_prompt = reflection_template.format(
+                pred_score=pred_score,
+                true_score=true_score,
+                trend=trend,
+                tech_context=tech_context,
+                input_text=input_text
             )
-            final_response += reflection_note
+            
+            # Run inference for reflection
+            ref_inputs = tokenizer([ref_prompt], return_tensors="pt").to("cuda")
+            ref_outputs = model.generate(**ref_inputs, max_new_tokens=300, use_cache=True)
+            ref_full_text = tokenizer.batch_decode(ref_outputs, skip_special_tokens=True)[0]
+            
+            # Extract the response part
+            try:
+                # The prompt ends with 'Analysis:\n', so the model generates the points.
+                generated_reflection = ref_full_text.split("### Response:")[-1].strip()
+            except:
+                generated_reflection = "[Reflection]\nError generating reflection."
+                
+            final_response += f"\n\n{generated_reflection}"
         else:
             # Generate Rationale (Confirmation)
             rationale_note = (
