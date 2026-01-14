@@ -205,6 +205,7 @@ def run_backtest():
         max_seq_length=4096,  # Increased for sliding window
         dtype=None,
         load_in_4bit=True,
+        local_files_only=True,
     )
     FastLanguageModel.for_inference(model)
 

@@ -238,6 +238,7 @@ def generate_enhanced_dataset():
         max_seq_length=2048,
         dtype=None,
         load_in_4bit=True,
+        local_files_only=True,
     )
     FastLanguageModel.for_inference(model)
 
