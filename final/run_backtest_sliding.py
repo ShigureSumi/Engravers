@@ -24,6 +24,8 @@ DEFAULT_REASONING_MODE = "step-by-step"  # "step-by-step" or "thinking"
 
 DEFAULT_OUTPUT_CSV = "q4_sliding_window_results_new.csv"
 DEFAULT_OUTPUT_CHART = "q4_sliding_window_chart_new.png"
+DEFAULT_ORIGINAL_STRATEGY_CSV = "final/q4_strategy_daily.csv"
+DEFAULT_SIMPLE_MODE = False
 
 # Global variables to be populated by args
 MODEL_PATH = DEFAULT_MODEL_PATH
@@ -38,7 +40,8 @@ ENABLE_DOWNLOAD = False
 OUTPUT_CSV = DEFAULT_OUTPUT_CSV
 OUTPUT_CHART = DEFAULT_OUTPUT_CHART
 COMPARE_CSV = None  # Path to another result CSV for comparison
-
+ORIGINAL_STRATEGY_CSV = DEFAULT_ORIGINAL_STRATEGY_CSV
+SIMPLE_MODE = DEFAULT_SIMPLE_MODE
 
 
 # ================= 1. Helper Functions (Legacy + Enhanced) =================
@@ -234,22 +237,63 @@ def run_backtest():
         except KeyError:
             continue
 
-        start_idx = max(0, curr_idx - WINDOW_SIZE + 1)
-        window_slice = df_daily.iloc[start_idx : curr_idx + 1]
+        if SIMPLE_MODE:
+            # Deterministic Model Logic (No Window, No Memory, Simple Prompt)
+            row = df_daily.iloc[curr_idx]
+            
+            # Reconstruct the exact training input format
+            # Training format was: "Date: ...\n\n[Technical Indicators]\n...\n\n[News Headlines]\n..."
+            # Note: df_daily['News'] is already formatted as text, but check format.
+            # In prepare_daily_data, news_text = "\n".join([f"- {h}" for h in headlines])
+            # Technicals = "Price: ... \nIndicators: ..."
+            
+            # We need to reconstruct the EXACT technical string format used in training if possible,
+            # or at least providing the same info.
+            # The training script used detailed tech string.
+            # Here we have 'Technicals' and 'News' in df_daily.
+            
+            # Let's try to match the training input as closely as possible.
+            # Training:
+            # tech_str = f"Open: {row['Open']:.2f}, ... RSI: {row['RSI']:.2f}..."
+            
+            full_row = row['Full_Row']
+            tech_str_training = (
+                f"Open: {full_row['Open']:.2f}, High: {full_row['High']:.2f}, Low: {full_row['Low']:.2f}, Close: {full_row['Close']:.2f}, Volume: {int(full_row['Volume'])}\n"
+                f"RSI: {full_row['RSI']:.2f}, MACD: {full_row['MACD']:.2f}, Signal: {full_row['Signal_Line']:.2f}, Hist: {full_row['MACD_Hist']:.2f}\n"
+                f"KDJ_K: {full_row['K']:.2f}, KDJ_D: {full_row['D']:.2f}, KDJ_J: {full_row['J']:.2f}\n"
+                f"BB_Upper: {full_row['Upper_Band']:.2f}, BB_Lower: {full_row['Lower_Band']:.2f}, %B: {full_row['Percent_B']:.2f}"
+            )
+            
+            input_text = f"Date: {current_date.strftime('%Y-%m-%d')}\n\n[Technical Indicators]\n{tech_str_training}\n\n[News Headlines]\n{row['News']}"
 
-        # Construct Prompt with History
-        history_text = ""
-        for dt, row in window_slice.iterrows():
-            date_str = dt.strftime("%Y-%m-%d")
-            is_today = dt == current_date
-            prefix = "TODAY" if is_today else "PAST"
+            prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
-            history_text += f"\n[{prefix} - {date_str}]\n"
-            history_text += f"Technicals: {row['Technicals']}\n"
-            history_text += f"News:\n{row['News']}\n"
+### Instruction:
+You are a Macro Quant Strategist specializing in Gold (XAU/USD). Analyze the given news and technical indicators for the day. Determine the Daily Sentiment Score (-5 to +5).
 
-        if REASONING_MODE == "thinking":
-            prompt = f"""### Instruction:
+### Input:
+{input_text}
+
+### Response:
+"""
+        else:
+            # Normal Sliding Window Logic
+            start_idx = max(0, curr_idx - WINDOW_SIZE + 1)
+            window_slice = df_daily.iloc[start_idx : curr_idx + 1]
+
+            # Construct Prompt with History
+            history_text = ""
+            for dt, row in window_slice.iterrows():
+                date_str = dt.strftime("%Y-%m-%d")
+                is_today = dt == current_date
+                prefix = "TODAY" if is_today else "PAST"
+
+                history_text += f"\n[{prefix} - {date_str}]\n"
+                history_text += f"Technicals: {row['Technicals']}\n"
+                history_text += f"News:\n{row['News']}\n"
+
+            if REASONING_MODE == "thinking":
+                prompt = f"""### Instruction:
 You are a Macro Quant Strategist.
 1. Analyze the market data history below (Window of {WINDOW_SIZE} days).
 2. Consider the 'Long Term Memory' of key drivers.
@@ -270,8 +314,8 @@ You are a Macro Quant Strategist.
 Score: [Your Score]
 Memory_Update: [Brief Summary]"""
 
-        else:  # step-by-step (default)
-            prompt = f"""### Instruction:
+            else:  # step-by-step (default)
+                prompt = f"""### Instruction:
 You are a Macro Quant Strategist.
 1. Analyze the market data history below (Window of {WINDOW_SIZE} days).
 2. Consider the 'Long Term Memory' of key drivers.
@@ -318,14 +362,15 @@ Memory_Update: [Brief Summary]"""
                     score_match = score_matches[-1]
                     score = float(score_match.group(1))
                     
-                    # Parse Memory Update (only if score found)
-                    memory_match = re.search(r"Memory_Update:(.*)", response_part, re.DOTALL)
-                    if memory_match:
-                        new_memory = memory_match.group(1).strip()
-                        # Safety check: Prevent memory from exploding or becoming empty noise
-                        if len(new_memory) > 10 and "Score" not in new_memory:
-                            # Truncate to ~200 chars as requested
-                            long_term_memory = new_memory[:250]
+                    if not SIMPLE_MODE:
+                        # Parse Memory Update (only if score found)
+                        memory_match = re.search(r"Memory_Update:(.*)", response_part, re.DOTALL)
+                        if memory_match:
+                            new_memory = memory_match.group(1).strip()
+                            # Safety check: Prevent memory from exploding or becoming empty noise
+                            if len(new_memory) > 10 and "Score" not in new_memory:
+                                # Truncate to ~200 chars as requested
+                                long_term_memory = new_memory[:250]
                             
                     # Success, break loop
                     break
@@ -417,27 +462,54 @@ Memory_Update: [Brief Summary]"""
     plt.plot(
         strategy_df.index,
         strategy_df["Cum_Strategy"],
-        label=f"Sliding Window AI (Sharpe: {strat_sharpe:.2f})",
+        label=f"Sliding Window AI (Sharpe: {strat_sharpe:.2f}, MDD: {max_drawdown:.2%})",
         color="purple",
         linewidth=2,
     )
     
-    # Plot Notebook 5.1.4 Baseline Strategy
-    # Calculate metrics for NB514
-    nb_ret = strategy_df["Ret_NB514"]
-    nb_mean = nb_ret.mean() * ann_factor
-    nb_std = nb_ret.std() * np.sqrt(ann_factor)
-    nb_sharpe = nb_mean / nb_std if nb_std != 0 else 0
-    nb_final = strategy_df["Cum_NB514"].iloc[-1] - 1
-    
-    plt.plot(
-        strategy_df.index,
-        strategy_df["Cum_NB514"],
-        label=f"Notebook 5.1.4 Logic (Sharpe: {nb_sharpe:.2f})",
-        color="green",
-        linestyle=":",
-        linewidth=1.5,
-    )
+    # Plot Original Notebook Strategy (if available)
+    if ORIGINAL_STRATEGY_CSV and os.path.exists(ORIGINAL_STRATEGY_CSV):
+        try:
+            print(f"Loading original strategy data from: {ORIGINAL_STRATEGY_CSV}")
+            orig_df = pd.read_csv(ORIGINAL_STRATEGY_CSV)
+            # Ensure Date parsing
+            if "Date" in orig_df.columns:
+                orig_df["Date"] = pd.to_datetime(orig_df["Date"])
+                orig_df.set_index("Date", inplace=True)
+            
+            # Align indices
+            common_idx = strategy_df.index.intersection(orig_df.index)
+            if not common_idx.empty:
+                orig_aligned = orig_df.loc[common_idx]
+                
+                # Check for needed columns
+                if "Cumulative_Strategy" in orig_aligned.columns:
+                    o_cum = orig_aligned["Cumulative_Strategy"]
+                    o_ret = orig_aligned["Strategy_Return"] if "Strategy_Return" in orig_aligned.columns else o_cum.pct_change()
+                    
+                    o_mean = o_ret.mean() * ann_factor
+                    o_std = o_ret.std() * np.sqrt(ann_factor)
+                    o_sharpe = o_mean / o_std if o_std != 0 else 0
+                    
+                    o_max = o_cum.cummax()
+                    o_dd = (o_cum - o_max) / o_max
+                    o_mdd = o_dd.min()
+                    
+                    o_final = o_cum.iloc[-1] - 1
+
+                    plt.plot(
+                        orig_aligned.index,
+                        o_cum,
+                        label=f"Original Notebook Strategy (Sharpe: {o_sharpe:.2f}, MDD: {o_mdd:.2%})",
+                        color="green",
+                        linestyle=":",
+                        linewidth=1.5,
+                    )
+                    
+                    # Update Metrics Text to include Original Strategy
+                    metrics_text += f"\nOriginal Ret: {o_final*100:.2f}%"
+        except Exception as e:
+            print(f"Warning: Failed to load original strategy CSV: {e}")
 
     # Plot Comparison Strategy if provided
     if COMPARE_CSV and os.path.exists(COMPARE_CSV):
@@ -585,10 +657,22 @@ if __name__ == "__main__":
         help="Path to save results Chart",
     )
     parser.add_argument(
+        "--original-csv",
+        type=str,
+        default=DEFAULT_ORIGINAL_STRATEGY_CSV,
+        help="Path to the original notebook output CSV (q4_strategy_daily.csv)",
+    )
+    parser.add_argument(
         "--compare-csv",
         type=str,
         default=None,
         help="Path to another result CSV to plot for comparison",
+    )
+
+    parser.add_argument(
+        "--simple-mode",
+        action="store_true",
+        help="Enable simple mode for deterministic models (Single day input, no reasoning, no memory).",
     )
 
     args = parser.parse_args()
@@ -606,5 +690,7 @@ if __name__ == "__main__":
     OUTPUT_CSV = args.output_csv
     OUTPUT_CHART = args.output_chart
     COMPARE_CSV = args.compare_csv
+    ORIGINAL_STRATEGY_CSV = args.original_csv
+    SIMPLE_MODE = args.simple_mode
 
     run_backtest()
