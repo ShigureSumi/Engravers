@@ -6,42 +6,50 @@ from trl import SFTTrainer
 from transformers import TrainingArguments
 
 # ================= Configuration =================
-# Absolute paths based on your environment
-BASE_MODEL_PATH = "/root/Engravers/llama3_gold_quant_checkpoint" # Start from previous fine-tune
+# 1. Point to the ORIGINAL Base Model (Unsloth needs this first)
+BASE_MODEL_NAME = "unsloth/llama-3-8b-bnb-4bit"
+
+# 2. Path to your EXISTING Fine-tuned Adapter (The Checkpoint)
+# This assumes the path on the server.
+ADAPTER_PATH = "/root/Engravers/llama3_gold_quant_checkpoint" 
+
+# 3. Data and Output
 DATA_FILE = "final/gold_pure_deterministic_train.jsonl"
 OUTPUT_DIR = "final/llama3_gold_deterministic_checkpoint"
 
 MAX_SEQ_LENGTH = 2048
-DTYPE = None # Auto-detect
+DTYPE = None 
 LOAD_IN_4BIT = True
 
 def train():
     print(f"🔥 Starting Deterministic Fine-tuning...")
-    print(f"   Base Model: {BASE_MODEL_PATH}")
-    print(f"   Data: {DATA_FILE}")
-    print(f"   Output: {OUTPUT_DIR}")
-    
-    # Safety Check: Ensure we aren't overwriting the source
-    if os.path.abspath(BASE_MODEL_PATH) == os.path.abspath(OUTPUT_DIR):
-        raise ValueError("Output directory cannot be the same as the base model path! This would overwrite your checkpoint.")
-
+    print(f"   Base Model: {BASE_MODEL_NAME}")
+    print(f"   Adapter:    {ADAPTER_PATH}")
+    print(f"   Data:       {DATA_FILE}")
+    print(f"   Output:     {OUTPUT_DIR}")
     print(f"   GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
 
-    # 1. Load the Pre-trained (Fine-tuned) Model
-    # Unsloth will automatically load the base model (llama-3-8b) + the adapter at this path
-    print("\n[1/5] Loading Model from Checkpoint...")
+    # 1. Load the ORIGINAL Base Model
+    print("\n[1/5] Loading Base Model...")
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name = BASE_MODEL_PATH,
+        model_name = BASE_MODEL_NAME, # Load Llama-3 base first
         max_seq_length = MAX_SEQ_LENGTH,
         dtype = DTYPE,
         load_in_4bit = LOAD_IN_4BIT,
     )
 
-    # 2. Configure LoRA for *Further* Training
-    # Since we loaded an adapter, we need to ensure it's trainable or add new adapters.
-    # Calling get_peft_model on a model that already has PEFT might be tricky.
-    # However, Unsloth handles 'continue training' well.
-    print("\n[2/5] Configuring LoRA Adapters (Continuing Training)...")
+    # 2. Load the Existing Adapter (Checkpoint)
+    print(f"\n[2/5] Loading Existing Adapter from {ADAPTER_PATH}...")
+    try:
+        model.load_adapter(ADAPTER_PATH)
+        print("   ✅ Adapter loaded successfully!")
+    except Exception as e:
+        print(f"   ⚠️ Warning: Could not load adapter directly: {e}")
+        print("   Continuing with base model only (fresh start)...")
+
+    # 3. Configure LoRA for FURTHER Training
+    # We need to ensure the model is in training mode. 
+    print("\n[2.5/5] ensuring model is trainable...")
     model = FastLanguageModel.get_peft_model(
         model,
         r = 64, 
@@ -54,7 +62,7 @@ def train():
         random_state = 3407,
     )
 
-    # 3. Load & Format Data
+    # 4. Load & Format Data
     print("\n[3/5] Loading & Formatting Data...")
     if not os.path.exists(DATA_FILE):
         raise FileNotFoundError(f"Training data file not found: {DATA_FILE}")
@@ -87,7 +95,7 @@ def train():
     dataset = dataset.map(formatting_prompts_func, batched = True)
     print(f"   Dataset size: {len(dataset)} samples")
 
-    # 4. Initialize Trainer
+    # 5. Initialize Trainer
     print("\n[4/5] Initializing Trainer...")
     trainer = SFTTrainer(
         model = model,
@@ -110,11 +118,11 @@ def train():
             weight_decay = 0.01,
             lr_scheduler_type = "linear",
             seed = 3407,
-            output_dir = OUTPUT_DIR, # Saving to NEW directory
+            output_dir = OUTPUT_DIR, 
         ),
     )
 
-    # 5. Train
+    # 6. Train
     print("\n[5/5] Training Started 🚀")
     trainer.train()
 
