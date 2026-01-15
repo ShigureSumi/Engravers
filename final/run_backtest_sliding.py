@@ -376,10 +376,12 @@ Memory_Update: [Brief Summary]"""
                     break
                 else:
                     print(f"  [Warning] No score found (Attempt {attempt+1}/{max_retries}). Retrying...")
+                    print(f"  [Debug] Raw LLM Output:\n{out_text}\n" + "-"*20)
                     score = 0.0 # Reset for retry
                     
             except Exception as e:
                 print(f"  [Error] Parsing failed: {e} (Attempt {attempt+1}/{max_retries}). Retrying...")
+                print(f"  [Debug] Raw LLM Output:\n{out_text}\n" + "-"*20)
                 score = 0.0
 
         results.append(
