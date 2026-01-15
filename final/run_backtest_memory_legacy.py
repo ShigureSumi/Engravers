@@ -16,7 +16,7 @@ from scipy import stats
 os.environ["HF_HUB_OFFLINE"] = "1"
 
 # ================= Configuration Defaults =================
-DEFAULT_MODEL_PATH = "llama3_gold_quant_checkpoint" 
+DEFAULT_MODEL_PATH = "/root/llama3_gold_quant_checkpoint" 
 DEFAULT_BASE_MODEL = "unsloth/llama-3-8b-bnb-4bit"
 DEFAULT_NEWS_FILE = "final/gold_llm_test.jsonl"
 DEFAULT_CACHE_FILE = "commodity_data/gold.csv"
@@ -137,14 +137,21 @@ def run_multistrat_backtest(args):
     print(f"Backtest execution range: {test_dates.min().date()} to {test_dates.max().date()} ({len(test_dates)} trading days)")
 
     # 2. Model
-    print(f"Loading Model: {args.model_path}")
+    print(f"Loading Base Model: {args.base_model}")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name = args.base_model, max_seq_length = 4096, dtype = None, load_in_4bit = True,
     )
-    try:
-        model.load_adapter(args.model_path)
-    except:
-        model.load_adapter(os.path.abspath(args.model_path))
+    
+    # Fix for Local Adapter Loading
+    adapter_path = args.model_path
+    if os.path.isdir(adapter_path):
+        adapter_path = os.path.abspath(adapter_path)
+        print(f"Loading Local Adapter from: {adapter_path}")
+        model.load_adapter(adapter_path)
+    else:
+        print(f"Warning: Adapter path '{adapter_path}' not found locally. Attempting standard load.")
+        model.load_adapter(adapter_path)
+
     FastLanguageModel.for_inference(model)
 
     # 3. Memory Buffers
