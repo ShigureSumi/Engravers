@@ -24,6 +24,7 @@ DEFAULT_DOWNLOAD_END_DATE = "2026-01-10"
 
 DEFAULT_OUTPUT_CSV = "q4_memory_results.csv"
 DEFAULT_OUTPUT_CHART = "q4_memory_chart.png"
+DEFAULT_ORIGINAL_STRATEGY_CSV = "final/q4_strategy_daily.csv"
 
 # ================= 1. Helper Functions (Copied) =================
 def compute_technical_indicators(df):
@@ -78,6 +79,9 @@ def prepare_daily_data(news_file, cache_file, start_date, end_date):
     if gold.index.tz is not None: gold.index = gold.index.tz_localize(None)
     valid_dates = pd.DatetimeIndex(gold.index).normalize()
 
+    # Align News (Keep logic same as run_backtest - simple alignment or shift?)
+    # User requested alignment with 5.1.4 logic EXCEPT the bug fix.
+    # So we KEEP the shifting logic.
     df_news["Trading_Date"] = df_news["Date"].apply(lambda x: get_next_trading_day(x, valid_dates))
 
     daily_records = []
@@ -229,7 +233,17 @@ News:
     
     # Returns
     gold_returns = gold_price["Close"].pct_change().shift(-1)
-    strategy_df = df_res.join(gold_returns.rename("Gold_Ret"))
+    
+    # Union of Benchmark: Use ALL trading days in range, not just those with news
+    full_trading_dates = gold_price.loc[args.start_date:args.end_date].index
+    
+    # Reindex strategy to full range
+    strategy_df = pd.DataFrame(index=full_trading_dates)
+    strategy_df = strategy_df.join(df_res)
+    strategy_df = strategy_df.join(gold_returns.rename("Gold_Ret"))
+    
+    # Fill Missing Scores (No News -> Neutral)
+    strategy_df["Score"] = strategy_df["Score"].fillna(0)
     
     # Signal
     strategy_df["Position"] = np.where(strategy_df["Score"] > 0, 1, -1)
@@ -256,6 +270,33 @@ News:
     
     plt.figure(figsize=(12, 6))
     plt.plot(strategy_df.index, strategy_df["Cum_Strategy"], label="Memory-Augmented AI", color="blue", linewidth=2)
+    
+    # Comparison Logic
+    if args.original_csv and os.path.exists(args.original_csv):
+        try:
+            print(f"Loading original strategy data from: {args.original_csv}")
+            orig_df = pd.read_csv(args.original_csv)
+            if "Date" in orig_df.columns:
+                orig_df["Date"] = pd.to_datetime(orig_df["Date"])
+                orig_df.set_index("Date", inplace=True)
+            
+            common_idx = strategy_df.index.intersection(orig_df.index)
+            if not common_idx.empty:
+                orig_aligned = orig_df.loc[common_idx]
+                if "Cumulative_Strategy" in orig_aligned.columns:
+                    o_cum = orig_aligned["Cumulative_Strategy"]
+                    o_final = o_cum.iloc[-1] - 1
+                    
+                    # Print Metrics
+                    print("-" * 20)
+                    print(f"📉 Original Strategy (5.1.4)")
+                    print(f"Final Return: {o_final*100:.2f}%")
+                    print("-" * 20)
+                    
+                    plt.plot(orig_aligned.index, o_cum, label="Original Strategy", color="green", linestyle=":", linewidth=1.5)
+        except Exception as e:
+            print(f"Warning: Failed to load original CSV: {e}")
+
     plt.plot(strategy_df.index, strategy_df["Cum_Gold"], label="Gold Benchmark", color="gray", linestyle="--")
     plt.title("Gold Strategy with 14-Day Memory Injection")
     plt.legend()
@@ -272,6 +313,7 @@ if __name__ == "__main__":
     parser.add_argument("--end-date", type=str, default=DEFAULT_END_DATE)
     parser.add_argument("--output-csv", type=str, default=DEFAULT_OUTPUT_CSV)
     parser.add_argument("--output-chart", type=str, default=DEFAULT_OUTPUT_CHART)
+    parser.add_argument("--original-csv", type=str, default=DEFAULT_ORIGINAL_STRATEGY_CSV)
     args = parser.parse_args()
     
     run_memory_backtest(args)

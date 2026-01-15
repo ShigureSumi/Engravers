@@ -410,7 +410,15 @@ Memory_Update: [Brief Summary]"""
     # Merge with next day return (T+1)
     gold_returns = gold_price["Close"].pct_change().shift(-1)
 
-    strategy_df = df_res.join(gold_returns.rename("Gold_Ret"))
+    # Union of Benchmark: Use ALL trading days in range
+    full_trading_dates = gold_price.loc[START_DATE:END_DATE].index
+    
+    strategy_df = pd.DataFrame(index=full_trading_dates)
+    strategy_df = strategy_df.join(df_res)
+    strategy_df = strategy_df.join(gold_returns.rename("Gold_Ret"))
+
+    # Fill Missing Scores
+    strategy_df["Score"] = strategy_df["Score"].fillna(0)
 
     # Signal Logic
     strategy_df["Position"] = np.where(strategy_df["Score"] > 0, 1, -1)
