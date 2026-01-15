@@ -488,6 +488,8 @@ Memory_Update: [Brief Summary]"""
         linewidth=2,
     )
     
+    extra_metrics = ""
+    
     # Plot Original Notebook Strategy (if available)
     if ORIGINAL_STRATEGY_CSV and os.path.exists(ORIGINAL_STRATEGY_CSV):
         try:
@@ -527,8 +529,8 @@ Memory_Update: [Brief Summary]"""
                         linewidth=1.5,
                     )
                     
-                    # Update Metrics Text to include Original Strategy
-                    metrics_text += f"\nOriginal Ret: {o_final*100:.2f}%"
+                    # Update Metrics Text
+                    extra_metrics += f"\nOriginal Ret: {o_final*100:.2f}%"
         except Exception as e:
             print(f"Warning: Failed to load original strategy CSV: {e}")
 
@@ -587,6 +589,7 @@ Memory_Update: [Brief Summary]"""
         f"Alpha: {alpha_ann:.2%}\n"
         f"Max DD: {max_drawdown:.2%}\n"
         f"Final Ret: {final_ret*100:.2f}%"
+        f"{extra_metrics}"
     )
     plt.text(
         0.02,
