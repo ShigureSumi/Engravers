@@ -114,11 +114,9 @@ def run_multistrat_backtest(args):
     df_daily, gold_price = prepare_daily_data(args.news_file, args.cache_file)
     
     # --- ALIGNMENT LOGIC ---
-    # Try to align start date with Original CSV if available
     aligned_start = None
     if args.original_csv and os.path.exists(args.original_csv):
         try:
-            # Read just the first few lines to find start date
             orig_head = pd.read_csv(args.original_csv, nrows=5)
             if "Date" in orig_head.columns:
                 first_date = pd.to_datetime(orig_head["Date"].iloc[0])
@@ -127,11 +125,9 @@ def run_multistrat_backtest(args):
         except Exception as e:
             print(f"Warning: Could not read start date from original CSV: {e}")
 
-    # Prioritize Args, then Alignment, then None (Auto)
     start_date = args.start_date if args.start_date else aligned_start
     end_date = args.end_date
 
-    # Apply Filters
     if start_date:
         df_daily = df_daily[df_daily.index >= pd.Timestamp(start_date)]
     if end_date:
@@ -197,21 +193,22 @@ def run_multistrat_backtest(args):
         with torch.no_grad():
             with model.disable_adapters():
                 # Update A: Standard Summary
-                sum_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+                sum_prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 Identify single most important Gold event (Max 15 words) or 'None'.<|eot_id|><|start_header_id|>user<|end_header_id|>
 News:
-{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+                
                 s_out = model.generate(**tokenizer([sum_prompt], return_tensors="pt").to("cuda"), max_new_tokens=48, temperature=0.1, use_cache=True)
                 raw_sum = tokenizer.batch_decode(s_out, skip_special_tokens=True)[0].split("assistant")[-1].strip()
                 if "None" not in raw_sum and len(raw_sum) > 5:
                     memory_buffer_A.append({"headline": raw_sum.replace('"','').split('\n')[0], "date": current_date})
                 
                 # Update D: AI Filtered Summary
-                # 1. Filter Check
-                filter_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+                filter_prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 Is there ANY event in today's news that will significantly impact Gold prices for the next 2 weeks? Reply ONLY 'YES' or 'NO'.<|eot_id|><|start_header_id|>user<|end_header_id|>
 News:
-{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+                
                 f_out = model.generate(**tokenizer([filter_prompt], return_tensors="pt").to("cuda"), max_new_tokens=5, temperature=0.05, use_cache=True)
                 is_imp = "YES" in tokenizer.batch_decode(f_out, skip_special_tokens=True)[0].split("assistant")[-1].strip().upper()
                 
