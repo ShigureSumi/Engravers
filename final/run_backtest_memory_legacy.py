@@ -90,13 +90,32 @@ def run_memory_backtest(args):
     test_dates = df_daily[args.start_date:args.end_date].index
 
     # 2. Load Model
-    print(f"Loading Model: {args.model_path}")
+    print(f"Loading Base Model: {args.base_model}")
+    print(f"Loading Adapter: {args.model_path}")
+    
+    # Load Base First
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name = args.model_path,
+        model_name = args.base_model, # Load Llama-3 Base
         max_seq_length = 4096,
         dtype = None,
         load_in_4bit = True,
     )
+    
+    # Load Adapter
+    try:
+        model.load_adapter(args.model_path)
+        print("✅ Adapter loaded successfully!")
+    except Exception as e:
+        print(f"❌ Failed to load adapter from {args.model_path}: {e}")
+        # Try finding absolute path if relative failed
+        abs_path = os.path.abspath(args.model_path)
+        print(f"   Attempting absolute path: {abs_path}")
+        try:
+            model.load_adapter(abs_path)
+            print("✅ Adapter loaded successfully (absolute path)!")
+        except:
+            raise RuntimeError("Could not load the fine-tuned adapter. Check path.")
+
     FastLanguageModel.for_inference(model)
 
     results = []
@@ -264,6 +283,7 @@ News:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--base-model", type=str, default=DEFAULT_BASE_MODEL)
     parser.add_argument("--model-path", type=str, default=DEFAULT_MODEL_PATH)
     parser.add_argument("--news-file", type=str, default=DEFAULT_NEWS_FILE)
     parser.add_argument("--cache-file", type=str, default=DEFAULT_CACHE_FILE)
