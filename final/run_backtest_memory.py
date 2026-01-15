@@ -175,7 +175,7 @@ You are a Macro Quant Strategist specializing in Gold (XAU/USD). Analyze the giv
         inputs = tokenizer([prompt], return_tensors="pt").to("cuda")
         
         # Deterministic generation
-        outputs = model.generate(**inputs, max_new_tokens=32, use_cache=True, temperature=0.1)
+        outputs = model.generate(**inputs, max_new_tokens=32, use_cache=True, temperature=0.05)
         out_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
         
         # Parse Score
