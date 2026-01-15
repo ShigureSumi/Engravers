@@ -350,8 +350,18 @@ If your analysis contradicts the market reality, provide a reflection.
             local_files_only=True,
         )
     except Exception as e:
-        print(f"Failed to load reflection model {REFLECTION_MODEL_PATH}: {e}")
-        return # Cannot proceed
+        print(f"Failed to load reflection model {REFLECTION_MODEL_PATH} with local_files_only=True: {e}")
+        print("Retrying without local_files_only restriction...")
+        try:
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=REFLECTION_MODEL_PATH,
+                max_seq_length=2048,
+                dtype=None,
+                load_in_4bit=True,
+            )
+        except Exception as e2:
+             print(f"Failed to load reflection model again: {e2}")
+             return # Cannot proceed
 
     FastLanguageModel.for_inference(model)
     

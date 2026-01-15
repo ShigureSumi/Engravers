@@ -24,13 +24,28 @@ def chat_loop():
         print("Selected: Finance Model")
 
     print(f"Loading Model from {model_path}...")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_path,
-        max_seq_length=4096,
-        dtype=None,
-        load_in_4bit=True,
-        local_files_only=True,
-    )
+    try:
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_path,
+            max_seq_length=4096,
+            dtype=None,
+            load_in_4bit=True,
+            local_files_only=True,
+        )
+    except Exception as e:
+        print(f"\n❌ Error loading model: {e}")
+        print("Note: If 'local_files_only=True' failed, the model might not be fully cached or 'config.json' is missing.")
+        print("Attempting to load without 'local_files_only=True' (requires internet if not cached)...")
+        # Temporarily enable online mode just for this retry if needed, but keeping offline env var might conflict.
+        # Let's just try loading without the flag, hoping it finds the cache properly.
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_path,
+            max_seq_length=4096,
+            dtype=None,
+            load_in_4bit=True,
+            # local_files_only=False # Let library decide
+        )
+
     FastLanguageModel.for_inference(model)
     print("\n✅ Model Loaded! You can now chat with the FinLLM.")
     print("Type 'exit' or 'quit' to stop.\n")
