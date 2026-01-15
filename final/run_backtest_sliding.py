@@ -341,35 +341,50 @@ Memory_Update: [Brief Summary]"""
         max_retries = 3
         score = 0.0
         
+        # Adjust generation params for simple mode
+        gen_temp = 0.1 if SIMPLE_MODE else 0.6
+        gen_tokens = 32 if SIMPLE_MODE else 256
+
         for attempt in range(max_retries):
             inputs = tokenizer([prompt], return_tensors="pt").to("cuda")
             outputs = model.generate(
-                **inputs, max_new_tokens=256, use_cache=True
-            )  # Increased tokens for reasoning
+                **inputs, max_new_tokens=gen_tokens, use_cache=True, temperature=gen_temp
+            )
             out_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
 
             # Parse Score & Memory
             try:
                 response_part = out_text.split("### Response:")[-1].strip()
 
-                # Parse Score - Adaptive search (finds "Score:" anywhere in response)
+                # Parse Score - Adaptive search
                 import re
                 
-                # Look for Score: X.X at the end or typically formatted
-                score_matches = list(re.finditer(r"Score:\s*(-?\d+(\.\d+)?)", response_part))
+                # 1. Try finding "Score: X"
+                score_matches = list(re.finditer(r"Score:\s*([+\-]?\d+(\.\d+)?)", response_part))
                 if score_matches:
-                    # Use the last occurrence in case "Score" is mentioned in reasoning
-                    score_match = score_matches[-1]
-                    score = float(score_match.group(1))
-                    
+                    score = float(score_matches[-1].group(1))
+                    found = True
+                else:
+                    # 2. If Simple Mode, try finding JUST a number at the start or end
+                    if SIMPLE_MODE:
+                        # Match a number that is the whole string or separated by newlines
+                        bare_match = re.search(r"^([+\-]?\d+(\.\d+)?)$", response_part.strip())
+                        if bare_match:
+                            score = float(bare_match.group(1))
+                            found = True
+                        else:
+                            found = False
+                    else:
+                        found = False
+
+                if found:
                     if not SIMPLE_MODE:
                         # Parse Memory Update (only if score found)
                         memory_match = re.search(r"Memory_Update:(.*)", response_part, re.DOTALL)
                         if memory_match:
                             new_memory = memory_match.group(1).strip()
-                            # Safety check: Prevent memory from exploding or becoming empty noise
+                            # Safety check
                             if len(new_memory) > 10 and "Score" not in new_memory:
-                                # Truncate to ~200 chars as requested
                                 long_term_memory = new_memory[:250]
                             
                     # Success, break loop
