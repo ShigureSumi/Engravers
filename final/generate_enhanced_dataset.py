@@ -372,7 +372,7 @@ If your analysis contradicts the market reality, provide a reflection.
     final_dataset = []
 
     print("Generating reflections...")
-    for item in tqdm(intermediate_results):
+    for item in tqdm(intermediate_results, total=len(intermediate_results)):
         pred_score = item["pred_score"]
         true_score = item["true_score"]
         row = item["row"]
@@ -426,7 +426,8 @@ You are a Senior Macro Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
 Analyze the News Headlines ONLY in a concise way (approx. 400 words).
 Explain why the news might have been priced in, ignored, or interpreted differently by the market.
-DO NOT OUTPUT "Scoring Rule" or dates. Provide a text analysis that REFERS TO THE NEWS and GIVE REASONS WHY the news didn't make the movement of the commodity move in the expected direction as well as what the analysis may have over or underestimated or ignored.
+DO NOT analyze headlines one by one. Provide ONE cohesive narrative analysis that aggregates the key themes (e.g., Geopolitics, Central Banks, Economy) and explains the overall market sentiment divergence.
+DO NOT OUTPUT "Scoring Rule" or dates.
 
 ### Input:
 {news_text}
