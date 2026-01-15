@@ -393,37 +393,38 @@ If your analysis contradicts the market reality, provide a reflection.
             tech_prompt = f"""### Instruction:
 You are a Senior Technical Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
-Analyze the Technical Indicators ONLY.
-Explain if the Technical Context ({tech_context}) signaled a move that overpowered the news.
-Strict constraints:
-1. Output ONLY the analysis text.
-2. NO conversational filler (e.g., "Note:", "I hope this helps", "Step 1").
-3. NO meta-commentary.
-4. Maximum 60 words.
+Identify the specific technical signal that confirms or contradicts this move.
+Explain the causality in approximately 50 words.
+Constraints:
+1. No bullet points or lists.
+2. No complex run-on sentences.
+3. Focus purely on the dominant technical driver.
+
+### Example Response:
+"The bearish divergence on the RSI warned of exhaustion despite the price hitting a new high. This signal, combined with a rejection at the Upper Bollinger Band, confirmed the reversal momentum."
 
 ### Input:
 {tech_str}
 
 ### Response:
+Technical Analysis:
 """
             t_inputs = tokenizer([tech_prompt], return_tensors="pt").to("cuda")
             t_outputs = model.generate(
                 **t_inputs,
-                max_new_tokens=150,  # Reduced max tokens since we want short output
+                max_new_tokens=120, # sufficient for ~50-60 words
                 use_cache=True,
                 repetition_penalty=1.2,
-                temperature=0.3, # Lower temperature for more focused output
+                temperature=0.3,
                 do_sample=True,
             )
             t_text = tokenizer.batch_decode(t_outputs, skip_special_tokens=True)[0]
             # Ensure "Technical Analysis:" prefix is preserved or re-added if missing from generation
             tech_gen = t_text.split("### Response:")[-1].strip()
             
-            # Post-processing cleanup
+            # Post-processing cleanup (only strip artifacts, do not truncate sentences)
             if "###" in tech_gen:
                 tech_gen = tech_gen.split("###")[0].strip()
-            if "Step 1" in tech_gen:
-                tech_gen = tech_gen.split("Step 1")[0].strip()
             
             if not tech_gen.lower().startswith("technical analysis"):
                 tech_analysis = "Technical Analysis:\n" + tech_gen
@@ -434,24 +435,26 @@ Strict constraints:
             news_prompt = f"""### Instruction:
 You are a Senior Macro Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
-Analyze the News Headlines ONLY.
-Explain why the news might have been priced in, ignored, or interpreted differently by the market.
-Provide ONE cohesive narrative analysis that aggregates the key themes.
-Strict constraints:
-1. Output ONLY the analysis text.
-2. NO conversational filler.
-3. NO step-by-step thinking.
-4. Maximum 60 words.
+Identify the primary news driver and explain the market's specific reaction.
+Explain the causality in approximately 50 words.
+Constraints:
+1. No bullet points or lists.
+2. No general market commentary.
+3. Focus purely on the specific news event impacting price.
+
+### Example Response:
+"Escalating geopolitical tensions in the Middle East drove immediate safe-haven flows, overpowering the bearish pressure from the strengthening US Dollar. Investors ignored the positive manufacturing data, prioritizing risk hedging."
 
 ### Input:
 {news_text}
 
 ### Response:
+News Analysis:
 """
             n_inputs = tokenizer([news_prompt], return_tensors="pt").to("cuda")
             n_outputs = model.generate(
                 **n_inputs,
-                max_new_tokens=200, # Reduced max tokens
+                max_new_tokens=120,
                 use_cache=True,
                 repetition_penalty=1.2,
                 temperature=0.3,
@@ -463,8 +466,6 @@ Strict constraints:
             # Post-processing cleanup
             if "###" in news_gen:
                 news_gen = news_gen.split("###")[0].strip()
-            if "Step 1" in news_gen:
-                news_gen = news_gen.split("Step 1")[0].strip()
 
             if not news_gen.lower().startswith("news analysis"):
                 news_analysis = "News Analysis:\n" + news_gen
@@ -474,11 +475,14 @@ Strict constraints:
             # Step C: Merged Conclusion
             merge_prompt = f"""### Instruction:
 You are a Chief Investment Officer.
-Synthesize the Technical and News analysis below to explain why the market moved as it did (Score: {true_score:.2f}).
-Strict constraints:
-1. Output ONLY the analysis text.
-2. NO conversational filler.
-3. Maximum 60 words.
+Synthesize the Technical and News analysis to explain the market move (Score: {true_score:.2f}).
+Provide a unified conclusion in approximately 50 words.
+Constraints:
+1. No bullet points or lists.
+2. No filler words.
+
+### Example Response:
+"The market move was primarily driven by safe-haven news, which invalidated the overbought technical signals. While the RSI suggested a pullback, the geopolitical fear factor created a breakout that technicals failed to capture."
 
 ### Input:
 [Technical Analysis]
@@ -488,11 +492,12 @@ Strict constraints:
 {news_analysis}
 
 ### Response:
+Merged Conclusion:
 """
             m_inputs = tokenizer([merge_prompt], return_tensors="pt").to("cuda")
             m_outputs = model.generate(
                 **m_inputs,
-                max_new_tokens=150,
+                max_new_tokens=120,
                 use_cache=True,
                 repetition_penalty=1.2,
                 temperature=0.3,
