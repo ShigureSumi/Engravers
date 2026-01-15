@@ -11,6 +11,7 @@ from datetime import timedelta
 import re
 import json
 from scipy import stats
+from contextlib import contextmanager
 
 # Force offline mode for Hugging Face
 os.environ["HF_HUB_OFFLINE"] = "1"
@@ -108,6 +109,10 @@ def get_llm_score(model, tokenizer, prompt):
         return float(match.group(1))
     return 0.0
 
+@contextmanager
+def dummy_cm():
+    yield
+
 # ================= 2. Multi-Strategy Logic =================
 def run_multistrat_backtest(args):
     # 1. Setup
@@ -197,15 +202,19 @@ def run_multistrat_backtest(args):
 
         # --- UPDATE MEMORIES ---
         with torch.no_grad():
-            try: cm = model.disable_adapter() # PEFT usually uses 'disable_adapter' (singular)
-            except AttributeError:
-                try: cm = model.disable_adapters() # Try plural if singular fails
-                except: 
-                    from contextlib import contextmanager
-                    @contextmanager
-                    def dummy_cm(): yield
-                    cm = dummy_cm()
+            # Robust Context Manager Fallback
+            cm = None
+            try:
+                cm = model.disable_adapter()
+            except:
+                try:
+                    cm = model.disable_adapters()
+                except:
+                    pass
             
+            if cm is None:
+                cm = dummy_cm() # Use dummy if methods return None or fail
+
             with cm:
                 # Update A: Standard Summary
                 sum_prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
