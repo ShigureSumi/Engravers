@@ -393,29 +393,38 @@ If your analysis contradicts the market reality, provide a reflection.
             tech_prompt = f"""### Instruction:
 You are a Senior Technical Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
-Analyze the Technical Indicators ONLY in a concise way (approx. 50 words).
+Analyze the Technical Indicators ONLY.
 Explain if the Technical Context ({tech_context}) signaled a move that overpowered the news.
-DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "I hope this helps").
-Provide strictly the analysis text.
+Strict constraints:
+1. Output ONLY the analysis text.
+2. NO conversational filler (e.g., "Note:", "I hope this helps", "Step 1").
+3. NO meta-commentary.
+4. Maximum 60 words.
 
 ### Input:
 {tech_str}
 
 ### Response:
-Technical Analysis:
 """
             t_inputs = tokenizer([tech_prompt], return_tensors="pt").to("cuda")
             t_outputs = model.generate(
                 **t_inputs,
-                max_new_tokens=400,
+                max_new_tokens=150,  # Reduced max tokens since we want short output
                 use_cache=True,
                 repetition_penalty=1.2,
-                temperature=0.7,
+                temperature=0.3, # Lower temperature for more focused output
                 do_sample=True,
             )
             t_text = tokenizer.batch_decode(t_outputs, skip_special_tokens=True)[0]
             # Ensure "Technical Analysis:" prefix is preserved or re-added if missing from generation
             tech_gen = t_text.split("### Response:")[-1].strip()
+            
+            # Post-processing cleanup
+            if "###" in tech_gen:
+                tech_gen = tech_gen.split("###")[0].strip()
+            if "Step 1" in tech_gen:
+                tech_gen = tech_gen.split("Step 1")[0].strip()
+            
             if not tech_gen.lower().startswith("technical analysis"):
                 tech_analysis = "Technical Analysis:\n" + tech_gen
             else:
@@ -425,29 +434,38 @@ Technical Analysis:
             news_prompt = f"""### Instruction:
 You are a Senior Macro Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
-Analyze the News Headlines ONLY in a concise way (approx. 50 words).
+Analyze the News Headlines ONLY.
 Explain why the news might have been priced in, ignored, or interpreted differently by the market.
-DO NOT analyze headlines one by one. Provide ONE cohesive narrative analysis that aggregates the key themes.
-DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "Here is the analysis").
-Provide strictly the analysis text.
+Provide ONE cohesive narrative analysis that aggregates the key themes.
+Strict constraints:
+1. Output ONLY the analysis text.
+2. NO conversational filler.
+3. NO step-by-step thinking.
+4. Maximum 60 words.
 
 ### Input:
 {news_text}
 
 ### Response:
-News Analysis:
 """
             n_inputs = tokenizer([news_prompt], return_tensors="pt").to("cuda")
             n_outputs = model.generate(
                 **n_inputs,
-                max_new_tokens=600,
+                max_new_tokens=200, # Reduced max tokens
                 use_cache=True,
                 repetition_penalty=1.2,
-                temperature=0.7,
+                temperature=0.3,
                 do_sample=True,
             )
             n_text = tokenizer.batch_decode(n_outputs, skip_special_tokens=True)[0]
             news_gen = n_text.split("### Response:")[-1].strip()
+            
+            # Post-processing cleanup
+            if "###" in news_gen:
+                news_gen = news_gen.split("###")[0].strip()
+            if "Step 1" in news_gen:
+                news_gen = news_gen.split("Step 1")[0].strip()
+
             if not news_gen.lower().startswith("news analysis"):
                 news_analysis = "News Analysis:\n" + news_gen
             else:
@@ -456,8 +474,11 @@ News Analysis:
             # Step C: Merged Conclusion
             merge_prompt = f"""### Instruction:
 You are a Chief Investment Officer.
-Synthesize the Technical and News analysis below to explain why the market moved as it did (Score: {true_score:.2f}) in a concise way (approx. 50 words).
-DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "This response adheres to ..."). Provide STRICTLY ONLY the analysis text.
+Synthesize the Technical and News analysis below to explain why the market moved as it did (Score: {true_score:.2f}).
+Strict constraints:
+1. Output ONLY the analysis text.
+2. NO conversational filler.
+3. Maximum 60 words.
 
 ### Input:
 [Technical Analysis]
@@ -467,19 +488,23 @@ DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "T
 {news_analysis}
 
 ### Response:
-Merged Conclusion:
 """
             m_inputs = tokenizer([merge_prompt], return_tensors="pt").to("cuda")
             m_outputs = model.generate(
                 **m_inputs,
-                max_new_tokens=400,
+                max_new_tokens=150,
                 use_cache=True,
                 repetition_penalty=1.2,
-                temperature=0.7,
+                temperature=0.3,
                 do_sample=True,
             )
             m_text = tokenizer.batch_decode(m_outputs, skip_special_tokens=True)[0]
             merged_gen = m_text.split("### Response:")[-1].strip()
+            
+            # Post-processing cleanup
+            if "###" in merged_gen:
+                merged_gen = merged_gen.split("###")[0].strip()
+
             if not merged_gen.lower().startswith("merged conclusion"):
                 merged_analysis = "Merged Conclusion:\n" + merged_gen
             else:
