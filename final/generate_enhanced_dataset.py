@@ -456,6 +456,7 @@ News Analysis:
 You are a Chief Investment Officer.
 Synthesize the Technical and News analysis below to explain why the market moved as it did (Score: {true_score:.2f}) in a concise way (approx. 250 words).
 DO NOT OUTPUT "Scoring Rule" or dates. Provide a text analysis.
+At the VERY END, repeat the final score line exactly as: "Actual Market Score: {true_score:.2f} ({trend})"
 
 ### Input:
 [Technical Analysis]
@@ -482,6 +483,11 @@ Merged Conclusion:
                 merged_analysis = "Merged Conclusion:\n" + merged_gen
             else:
                 merged_analysis = merged_gen
+            
+            # Force append the score line if the model didn't do it perfectly (safety net)
+            expected_score_line = f"Actual Market Score: {true_score:.2f} ({trend})"
+            if expected_score_line not in merged_analysis:
+                merged_analysis += f"\n\n{expected_score_line}"
 
             generated_reflection = (
                 f"[Reflection]\n"
