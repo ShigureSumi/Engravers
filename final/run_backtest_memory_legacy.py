@@ -197,25 +197,15 @@ def run_multistrat_backtest(args):
 
         # --- UPDATE MEMORIES ---
         with torch.no_grad():
-            # TRY to disable adapter. If NoneType error, assume model is already in base state or ignore.
-            # PEFT usually uses 'disable_adapter' (singular)
-            try:
-                cm = model.disable_adapter()
+            try: cm = model.disable_adapter() # PEFT usually uses 'disable_adapter' (singular)
             except AttributeError:
-                # If disable_adapter is missing, maybe it's disable_adapters (plural)
-                try:
-                    cm = model.disable_adapters()
-                except:
-                    cm = None
+                try: cm = model.disable_adapters() # Try plural if singular fails
+                except: 
+                    from contextlib import contextmanager
+                    @contextmanager
+                    def dummy_cm(): yield
+                    cm = dummy_cm()
             
-            # If cm is None, create a dummy context manager
-            if cm is None:
-                from contextlib import contextmanager
-                @contextmanager
-                def dummy_cm():
-                    yield
-                cm = dummy_cm()
-
             with cm:
                 # Update A: Standard Summary
                 sum_prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
@@ -286,11 +276,14 @@ News:
     df_res = pd.DataFrame(results).set_index("Date")
     gold_returns = gold_price["Close"].pct_change().shift(-1)
     
+    # SLICE returns to match backtest period for accurate cumulative calc
+    test_gold_returns = gold_returns.loc[df_res.index]
+    
     summary_metrics = []
     plt.figure(figsize=(15, 8))
     
-    # Gold
-    gold_cum = (1 + gold_returns.fillna(0)).cumprod()
+    # Gold Benchmark (Corrected to use test period)
+    gold_cum = (1 + test_gold_returns.fillna(0)).cumprod()
     final_gold = gold_cum.iloc[-1] - 1
     plt.plot(gold_cum.index, gold_cum, label=f"Gold B&H ({final_gold:.1%})", color="black", linestyle="--", linewidth=2, alpha=0.5)
     
@@ -299,9 +292,13 @@ News:
     print("-" * 95)
     print(f"{('Gold Benchmark'):<25} | {final_gold*100:6.1f}% | {'N/A':<6} | {'N/A':<7} | {'0.0%':<7}")
 
-    for strat in [c for c in df_res.columns if c.startswith('S')]:
+    # FILTERED LOOP: Only treat columns starting with 'S' AND NOT 'Score_' as strategies
+    strat_cols = [c for c in df_res.columns if c.startswith('S') and not c.startswith('Score_')]
+
+    for strat in strat_cols:
         s_pos = df_res[strat]
-        aligned_gold = gold_returns.loc[s_pos.index]
+        # Align returns
+        aligned_gold = test_gold_returns.loc[s_pos.index]
         
         strat_ret = s_pos * aligned_gold
         strat_cum = (1 + strat_ret.fillna(0)).cumprod()
@@ -347,8 +344,9 @@ News:
                 o_cum = orig_df.loc[common, "Cumulative_Strategy"]
                 o_final = o_cum.iloc[-1] - 1
                 
+                # Calc Original Alpha
                 o_ret = o_cum.pct_change().dropna()
-                g_ret_aligned = gold_returns.loc[o_ret.index].dropna()
+                g_ret_aligned = test_gold_returns.loc[o_ret.index].dropna()
                 c_idx = o_ret.index.intersection(g_ret_aligned.index)
                 if len(c_idx) > 10:
                     b_o, a_o, r, p, e = stats.linregress(g_ret_aligned.loc[c_idx], o_ret.loc[c_idx])
