@@ -22,6 +22,9 @@ DEFAULT_DOWNLOAD_END_DATE = "2026-01-10"
 DEFAULT_WINDOW_SIZE = 3
 DEFAULT_REASONING_MODE = "step-by-step"  # "step-by-step" or "thinking"
 
+DEFAULT_OUTPUT_CSV = "q4_sliding_window_results_new.csv"
+DEFAULT_OUTPUT_CHART = "q4_sliding_window_chart_new.png"
+
 # Global variables to be populated by args
 MODEL_PATH = DEFAULT_MODEL_PATH
 NEWS_FILE = DEFAULT_NEWS_FILE
@@ -32,6 +35,10 @@ DOWNLOAD_END_DATE = DEFAULT_DOWNLOAD_END_DATE
 WINDOW_SIZE = DEFAULT_WINDOW_SIZE
 REASONING_MODE = DEFAULT_REASONING_MODE
 ENABLE_DOWNLOAD = False
+OUTPUT_CSV = DEFAULT_OUTPUT_CSV
+OUTPUT_CHART = DEFAULT_OUTPUT_CHART
+COMPARE_CSV = None  # Path to another result CSV for comparison
+
 
 
 # ================= 1. Helper Functions (Legacy + Enhanced) =================
@@ -351,9 +358,13 @@ Memory_Update: [Brief Summary]"""
 
     strategy_df["Strategy_Ret"] = strategy_df["Position"] * strategy_df["Gold_Ret"]
 
-    # Cumulative
-    strategy_df["Cum_Gold"] = (1 + strategy_df["Gold_Ret"].fillna(0)).cumprod()
-    strategy_df["Cum_Strategy"] = (1 + strategy_df["Strategy_Ret"].fillna(0)).cumprod()
+    # Calculate Drawdown for Strategy
+    cum_max = strategy_df["Cum_Strategy"].cummax()
+    drawdown = (strategy_df["Cum_Strategy"] - cum_max) / cum_max
+    max_drawdown = drawdown.min()
+
+    # Final Return
+    final_ret = strategy_df["Cum_Strategy"].iloc[-1] - 1
 
     # ================= Performance Metrics =================
     # Annualize factor (assuming daily data, 252 trading days)
@@ -393,20 +404,82 @@ Memory_Update: [Brief Summary]"""
     print(f"Gold (B&H) Sharpe: {gold_sharpe:.2f}")
     print(f"Alpha (Annualized): {alpha_ann:.2%}")
     print(f"Beta: {beta:.2f}")
+    print(f"Max Drawdown: {max_drawdown:.2%}")
     print("=" * 40 + "\n")
 
     # Save & Plot
-    strategy_df.to_csv("q4_sliding_window_results.csv")
-    print("✅ Results saved to q4_sliding_window_results.csv")
+    strategy_df.to_csv(OUTPUT_CSV)
+    print(f"✅ Results saved to {OUTPUT_CSV}")
 
     plt.figure(figsize=(12, 6))
+    
+    # Plot Main Strategy
     plt.plot(
         strategy_df.index,
         strategy_df["Cum_Strategy"],
-        label="Sliding Window AI",
+        label=f"Sliding Window AI (Sharpe: {strat_sharpe:.2f})",
         color="purple",
         linewidth=2,
     )
+    
+    # Plot Notebook 5.1.4 Baseline Strategy
+    # Calculate metrics for NB514
+    nb_ret = strategy_df["Ret_NB514"]
+    nb_mean = nb_ret.mean() * ann_factor
+    nb_std = nb_ret.std() * np.sqrt(ann_factor)
+    nb_sharpe = nb_mean / nb_std if nb_std != 0 else 0
+    nb_final = strategy_df["Cum_NB514"].iloc[-1] - 1
+    
+    plt.plot(
+        strategy_df.index,
+        strategy_df["Cum_NB514"],
+        label=f"Notebook 5.1.4 Logic (Sharpe: {nb_sharpe:.2f})",
+        color="green",
+        linestyle=":",
+        linewidth=1.5,
+    )
+
+    # Plot Comparison Strategy if provided
+    if COMPARE_CSV and os.path.exists(COMPARE_CSV):
+        try:
+            print(f"Loading comparison data from: {COMPARE_CSV}")
+            comp_df = pd.read_csv(COMPARE_CSV, index_col=0, parse_dates=True)
+            # Ensure indices align for fair comparison
+            common_idx = strategy_df.index.intersection(comp_df.index)
+            if not common_idx.empty:
+                comp_aligned = comp_df.loc[common_idx]
+                
+                # Calculate Metrics for Comparison
+                # Assuming 'Strategy_Ret' or 'Cum_Strategy' exists. Prefer recalculating from returns to be safe.
+                if "Strategy_Ret" in comp_aligned.columns:
+                    c_ret = comp_aligned["Strategy_Ret"]
+                    c_cum = (1 + c_ret.fillna(0)).cumprod()
+                elif "Cum_Strategy" in comp_aligned.columns:
+                     c_cum = comp_aligned["Cum_Strategy"]
+                     c_ret = c_cum.pct_change()
+                else:
+                    c_cum = None
+
+                if c_cum is not None:
+                    c_mean = c_ret.mean() * ann_factor
+                    c_std = c_ret.std() * np.sqrt(ann_factor)
+                    c_sharpe = c_mean / c_std if c_std != 0 else 0
+                    
+                    c_max = c_cum.cummax()
+                    c_dd = (c_cum - c_max) / c_max
+                    c_mdd = c_dd.min()
+                    
+                    plt.plot(
+                        comp_aligned.index,
+                        c_cum,
+                        label=f"Comparison (Sharpe: {c_sharpe:.2f}, MDD: {c_mdd:.2%})",
+                        color="orange",
+                        linestyle="-.",
+                        linewidth=2,
+                    )
+        except Exception as e:
+            print(f"Warning: Failed to load comparison CSV: {e}")
+
     plt.plot(
         strategy_df.index,
         strategy_df["Cum_Gold"],
@@ -418,8 +491,9 @@ Memory_Update: [Brief Summary]"""
     # Add Text Box with Metrics to Plot
     metrics_text = (
         f"Sharpe (AI): {strat_sharpe:.2f}\n"
-        f"Sharpe (Gold): {gold_sharpe:.2f}\n"
-        f"Alpha: {alpha_ann:.2%}"
+        f"Alpha: {alpha_ann:.2%}\n"
+        f"Max DD: {max_drawdown:.2%}\n"
+        f"Final Ret: {final_ret*100:.2f}%"
     )
     plt.text(
         0.02,
@@ -436,11 +510,9 @@ Memory_Update: [Brief Summary]"""
     plt.ylabel("Cumulative Return")
     plt.grid(True, alpha=0.3)
     plt.legend()
-    plt.savefig("q4_sliding_window_chart.png")
+    plt.savefig(OUTPUT_CHART)
 
-    print("✅ Chart saved to q4_sliding_window_chart.png")
-
-    final_ret = strategy_df["Cum_Strategy"].iloc[-1] - 1
+    print(f"✅ Chart saved to {OUTPUT_CHART}")
     print(f"🚀 Final Strategy Return: {final_ret*100:.2f}%")
 
 
@@ -500,6 +572,24 @@ if __name__ == "__main__":
         choices=["thinking", "step-by-step"],
         help="Reasoning mode: 'thinking' (internal monologue) or 'step-by-step' (structured reasoning)",
     )
+    parser.add_argument(
+        "--output-csv",
+        type=str,
+        default=DEFAULT_OUTPUT_CSV,
+        help="Path to save results CSV",
+    )
+    parser.add_argument(
+        "--output-chart",
+        type=str,
+        default=DEFAULT_OUTPUT_CHART,
+        help="Path to save results Chart",
+    )
+    parser.add_argument(
+        "--compare-csv",
+        type=str,
+        default=None,
+        help="Path to another result CSV to plot for comparison",
+    )
 
     args = parser.parse_args()
 
@@ -513,5 +603,8 @@ if __name__ == "__main__":
     DOWNLOAD_END_DATE = args.download_end_date
     WINDOW_SIZE = args.window_size
     REASONING_MODE = args.mode
+    OUTPUT_CSV = args.output_csv
+    OUTPUT_CHART = args.output_chart
+    COMPARE_CSV = args.compare_csv
 
     run_backtest()
