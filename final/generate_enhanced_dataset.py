@@ -395,7 +395,8 @@ You are a Senior Technical Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
 Analyze the Technical Indicators ONLY in a concise way (approx. 250 words).
 Explain if the Technical Context ({tech_context}) signaled a move that overpowered the news.
-DO NOT OUTPUT "Scoring Rule" or dates. Provide a text analysis.
+DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "I hope this helps").
+Provide strictly the analysis text.
 
 ### Input:
 {tech_str}
@@ -405,12 +406,12 @@ Technical Analysis:
 """
             t_inputs = tokenizer([tech_prompt], return_tensors="pt").to("cuda")
             t_outputs = model.generate(
-                **t_inputs, 
-                max_new_tokens=400, 
+                **t_inputs,
+                max_new_tokens=400,
                 use_cache=True,
                 repetition_penalty=1.2,
                 temperature=0.7,
-                do_sample=True
+                do_sample=True,
             )
             t_text = tokenizer.batch_decode(t_outputs, skip_special_tokens=True)[0]
             # Ensure "Technical Analysis:" prefix is preserved or re-added if missing from generation
@@ -426,8 +427,9 @@ You are a Senior Macro Analyst.
 The AI model predicted {pred_score}, but the Actual Market Score was {true_score:.2f} (Trend: {trend}).
 Analyze the News Headlines ONLY in a concise way (approx. 400 words).
 Explain why the news might have been priced in, ignored, or interpreted differently by the market.
-DO NOT analyze headlines one by one. Provide ONE cohesive narrative analysis that aggregates the key themes (e.g., Geopolitics, Central Banks, Economy) and explains the overall market sentiment divergence.
-DO NOT OUTPUT "Scoring Rule" or dates.
+DO NOT analyze headlines one by one. Provide ONE cohesive narrative analysis that aggregates the key themes.
+DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "Here is the analysis").
+Provide strictly the analysis text.
 
 ### Input:
 {news_text}
@@ -437,12 +439,12 @@ News Analysis:
 """
             n_inputs = tokenizer([news_prompt], return_tensors="pt").to("cuda")
             n_outputs = model.generate(
-                **n_inputs, 
-                max_new_tokens=600, 
+                **n_inputs,
+                max_new_tokens=600,
                 use_cache=True,
                 repetition_penalty=1.2,
                 temperature=0.7,
-                do_sample=True
+                do_sample=True,
             )
             n_text = tokenizer.batch_decode(n_outputs, skip_special_tokens=True)[0]
             news_gen = n_text.split("### Response:")[-1].strip()
@@ -455,8 +457,7 @@ News Analysis:
             merge_prompt = f"""### Instruction:
 You are a Chief Investment Officer.
 Synthesize the Technical and News analysis below to explain why the market moved as it did (Score: {true_score:.2f}) in a concise way (approx. 250 words).
-DO NOT OUTPUT "Scoring Rule" or dates. Provide a text analysis.
-At the VERY END, repeat the final score line exactly as: "Actual Market Score: {true_score:.2f} ({trend})"
+DO NOT OUTPUT "Scoring Rule", dates, or conversational filler (e.g., "Note:", "This response adheres to ..."). Provide STRICTLY ONLY the analysis text.
 
 ### Input:
 [Technical Analysis]
@@ -470,12 +471,12 @@ Merged Conclusion:
 """
             m_inputs = tokenizer([merge_prompt], return_tensors="pt").to("cuda")
             m_outputs = model.generate(
-                **m_inputs, 
-                max_new_tokens=400, 
+                **m_inputs,
+                max_new_tokens=400,
                 use_cache=True,
                 repetition_penalty=1.2,
                 temperature=0.7,
-                do_sample=True
+                do_sample=True,
             )
             m_text = tokenizer.batch_decode(m_outputs, skip_special_tokens=True)[0]
             merged_gen = m_text.split("### Response:")[-1].strip()
@@ -483,8 +484,12 @@ Merged Conclusion:
                 merged_analysis = "Merged Conclusion:\n" + merged_gen
             else:
                 merged_analysis = merged_gen
-            
-            # Force append the score line if the model didn't do it perfectly (safety net)
+
+            # Remove any trailing "Note:" filler if the model still ignored instructions
+            if "Note:" in merged_analysis:
+                merged_analysis = merged_analysis.split("Note:")[0].strip()
+
+            # Programmatically append the score line (Deterministic Output)
             expected_score_line = f"Actual Market Score: {true_score:.2f} ({trend})"
             if expected_score_line not in merged_analysis:
                 merged_analysis += f"\n\n{expected_score_line}"
