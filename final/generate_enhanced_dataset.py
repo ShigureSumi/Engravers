@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import torch
-from unsloth import FastLanguageModel
 from tqdm import tqdm
 import json
 import os
@@ -679,5 +678,9 @@ if __name__ == "__main__":
     START_DATE = args.start_date
     END_DATE = args.end_date
     DOWNLOAD_END_DATE = args.download_end_date
+
+    # Import unsloth only if needed (not in deterministic mode)
+    if not DETERMINISTIC_ONLY:
+        from unsloth import FastLanguageModel
 
     generate_enhanced_dataset()
