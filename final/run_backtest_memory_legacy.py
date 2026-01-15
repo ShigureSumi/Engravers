@@ -20,7 +20,6 @@ DEFAULT_MODEL_PATH = "llama3_gold_quant_checkpoint"
 DEFAULT_BASE_MODEL = "unsloth/llama-3-8b-bnb-4bit"
 DEFAULT_NEWS_FILE = "final/gold_llm_test.jsonl"
 DEFAULT_CACHE_FILE = "commodity_data/gold.csv"
-# DEFAULTS Set to None to auto-detect from JSONL
 DEFAULT_START_DATE = None 
 DEFAULT_END_DATE = None
 
@@ -66,13 +65,11 @@ def prepare_daily_data(news_file, cache_file):
     max_date = df_news["Date"].max()
     print(f"News Data Range: {min_date.date()} to {max_date.date()}")
     
-    # Download buffer
     download_start = (min_date - timedelta(days=30)).strftime('%Y-%m-%d')
     download_end = (max_date + timedelta(days=10)).strftime('%Y-%m-%d')
     
     if os.path.exists(cache_file):
         gold = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-        # Check if cache covers range
         if gold.index.max() < max_date:
             print("Cache stale, updating...")
             try:
@@ -116,14 +113,32 @@ def run_multistrat_backtest(args):
     # 1. Setup
     df_daily, gold_price = prepare_daily_data(args.news_file, args.cache_file)
     
-    # Filter by Args ONLY if provided, else use full data
-    if args.start_date:
-        df_daily = df_daily[df_daily.index >= args.start_date]
-    if args.end_date:
-        df_daily = df_daily[df_daily.index <= args.end_date]
+    # --- ALIGNMENT LOGIC ---
+    # Try to align start date with Original CSV if available
+    aligned_start = None
+    if args.original_csv and os.path.exists(args.original_csv):
+        try:
+            # Read just the first few lines to find start date
+            orig_head = pd.read_csv(args.original_csv, nrows=5)
+            if "Date" in orig_head.columns:
+                first_date = pd.to_datetime(orig_head["Date"].iloc[0])
+                aligned_start = first_date
+                print(f"Alignment: Detected start date from original CSV: {aligned_start.date()}")
+        except Exception as e:
+            print(f"Warning: Could not read start date from original CSV: {e}")
+
+    # Prioritize Args, then Alignment, then None (Auto)
+    start_date = args.start_date if args.start_date else aligned_start
+    end_date = args.end_date
+
+    # Apply Filters
+    if start_date:
+        df_daily = df_daily[df_daily.index >= pd.Timestamp(start_date)]
+    if end_date:
+        df_daily = df_daily[df_daily.index <= pd.Timestamp(end_date)]
         
     test_dates = df_daily.index
-    print(f"Backtest execution range: {test_dates.min()} to {test_dates.max()} ({len(test_dates)} trading days)")
+    print(f"Backtest execution range: {test_dates.min().date()} to {test_dates.max().date()} ({len(test_dates)} trading days)")
 
     # 2. Model
     print(f"Loading Model: {args.model_path}")
@@ -182,7 +197,10 @@ def run_multistrat_backtest(args):
         with torch.no_grad():
             with model.disable_adapters():
                 # Update A: Standard Summary
-                sum_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\nIdentify single most important Gold event (Max 15 words) or 'None'.<|eot_id|><|start_header_id|>user<|end_header_id|>\nNews:\n{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+                sum_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+Identify single most important Gold event (Max 15 words) or 'None'.<|eot_id|><|start_header_id|>user<|end_header_id|>
+News:
+{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
                 s_out = model.generate(**tokenizer([sum_prompt], return_tensors="pt").to("cuda"), max_new_tokens=48, temperature=0.1, use_cache=True)
                 raw_sum = tokenizer.batch_decode(s_out, skip_special_tokens=True)[0].split("assistant")[-1].strip()
                 if "None" not in raw_sum and len(raw_sum) > 5:
@@ -190,7 +208,10 @@ def run_multistrat_backtest(args):
                 
                 # Update D: AI Filtered Summary
                 # 1. Filter Check
-                filter_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\nIs there ANY event in today's news that will significantly impact Gold prices for the next 2 weeks? Reply ONLY 'YES' or 'NO'.<|eot_id|><|start_header_id|>user<|end_header_id|>\nNews:\n{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+                filter_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+Is there ANY event in today's news that will significantly impact Gold prices for the next 2 weeks? Reply ONLY 'YES' or 'NO'.<|eot_id|><|start_header_id|>user<|end_header_id|>
+News:
+{chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
                 f_out = model.generate(**tokenizer([filter_prompt], return_tensors="pt").to("cuda"), max_new_tokens=5, temperature=0.05, use_cache=True)
                 is_imp = "YES" in tokenizer.batch_decode(f_out, skip_special_tokens=True)[0].split("assistant")[-1].strip().upper()
                 
