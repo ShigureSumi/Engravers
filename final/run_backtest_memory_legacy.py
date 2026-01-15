@@ -206,7 +206,7 @@ News:
 {chr(10).join(current_headlines)}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
         
         with torch.no_grad():
-            with model.disable_adapter():
+            with model.disable_adapters():
                 inputs_sum = tokenizer([summary_prompt], return_tensors="pt").to("cuda")
                 outputs_sum = model.generate(**inputs_sum, max_new_tokens=48, temperature=0.1, use_cache=True)
                 sum_text = tokenizer.batch_decode(outputs_sum, skip_special_tokens=True)[0]

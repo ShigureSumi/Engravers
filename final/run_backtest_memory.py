@@ -213,7 +213,7 @@ News:
             # Temporarily disable adapters if possible, or just trust the base capability
             # Unsloth models are merged? No, they use LoRA.
             # To use base model, we can try:
-            with model.disable_adapter():
+            with model.disable_adapters():
                 inputs_sum = tokenizer([summary_prompt], return_tensors="pt").to("cuda")
                 outputs_sum = model.generate(**inputs_sum, max_new_tokens=48, temperature=0.1, use_cache=True)
                 sum_text = tokenizer.batch_decode(outputs_sum, skip_special_tokens=True)[0]
