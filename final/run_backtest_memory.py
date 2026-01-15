@@ -242,8 +242,14 @@ News:
     # Metrics
     final_ret = strategy_df["Cum_Strategy"].iloc[-1] - 1
     
+    # Max Drawdown
+    cum_max = strategy_df["Cum_Strategy"].cummax()
+    drawdown = (strategy_df["Cum_Strategy"] - cum_max) / cum_max
+    max_drawdown = drawdown.min()
+    
     print("\n" + "="*40)
     print(f"🚀 Memory Strategy Final Return: {final_ret*100:.2f}%")
+    print(f"📉 Max Drawdown: {max_drawdown:.2%}")
     print("="*40)
     
     strategy_df.to_csv(args.output_csv)
