@@ -15,9 +15,7 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 
 # ================= Configuration Defaults =================
 DEFAULT_MODEL_PATH = "/home/dragon/AI/llama-3-8B-4bit-finance"
-DEFAULT_REFLECTION_MODEL_PATH = (
-    "~/.cache/modelscope/hub/models/unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit"
-)
+DEFAULT_REFLECTION_MODEL_PATH = "/home/dragon/.cache/modelscope/hub/models/unsloth/Meta-Llama-3___1-8B-Instruct-unsloth-bnb-4bit"
 DEFAULT_OUTPUT_FILE = "final/gold_llm_enhanced_train.jsonl"
 DEFAULT_NEWS_FILE = "final/gold_news_10years.csv"
 DEFAULT_CACHE_FILE = "commodity_data/gold.csv"

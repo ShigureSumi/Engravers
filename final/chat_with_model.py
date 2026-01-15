@@ -7,9 +7,7 @@ import argparse
 os.environ["HF_HUB_OFFLINE"] = "1"
 
 FINANCE_MODEL_PATH = "/home/dragon/AI/llama-3-8B-4bit-finance"
-BASE_MODEL_PATH = (
-    "~/.cache/modelscope/hub/models/unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit"
-)
+BASE_MODEL_PATH = "/home/dragon/.cache/modelscope/hub/models/unsloth/Meta-Llama-3___1-8B-Instruct-unsloth-bnb-4bit"
 
 
 def chat_loop():
