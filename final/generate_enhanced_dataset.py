@@ -34,6 +34,7 @@ END_DATE = DEFAULT_END_DATE
 DOWNLOAD_END_DATE = DEFAULT_DOWNLOAD_END_DATE
 ENABLE_DOWNLOAD = False
 DEBUG_MODE = False
+DETERMINISTIC_ONLY = False
 
 
 # ================= 1. Helper Functions for Tech Indicators =================
@@ -245,6 +246,38 @@ def generate_enhanced_dataset():
     # -------------------------------------------------------------------------
     # PASS 1: Generate Scores with Finance Model
     # -------------------------------------------------------------------------
+    # Check for Deterministic Only Mode
+    if DETERMINISTIC_ONLY:
+        print("\n[Mode] Deterministic Only: Skipping LLM Generation.")
+        final_dataset = []
+        for date, row in tqdm(df.iterrows(), total=len(df)):
+            # Construct Input String
+            tech_str = (
+                f"Open: {row['Open']:.2f}, High: {row['High']:.2f}, Low: {row['Low']:.2f}, Close: {row['Close']:.2f}, Volume: {int(row['Volume'])}\n"
+                f"RSI: {row['RSI']:.2f}, MACD: {row['MACD']:.2f}, Signal: {row['Signal_Line']:.2f}, Hist: {row['MACD_Hist']:.2f}\n"
+                f"KDJ_K: {row['K']:.2f}, KDJ_D: {row['D']:.2f}, KDJ_J: {row['J']:.2f}\n"
+                f"BB_Upper: {row['Upper_Band']:.2f}, BB_Lower: {row['Lower_Band']:.2f}, %B: {row['Percent_B']:.2f}"
+            )
+            input_text = f"Date: {date.strftime('%Y-%m-%d')}\n\n[Technical Indicators]\n{tech_str}\n\n[News Headlines]\n{row['News_Text']}"
+            
+            # Deterministic Output: Just the score
+            trend = "bullish" if row["Calculated_Score"] > 1 else "bearish" if row["Calculated_Score"] < -1 else "neutral"
+            output_text = f"Score: {row['Calculated_Score']:.2f}"
+
+            entry = {
+                "instruction": "You are a Macro Quant Strategist specializing in Gold (XAU/USD). Analyze the given news and technical indicators for the day. Determine the Daily Sentiment Score (-5 to +5).",
+                "input": input_text,
+                "output": output_text,
+            }
+            final_dataset.append(entry)
+            
+        print(f"Saving {len(final_dataset)} deterministic rows to {OUTPUT_FILE}...")
+        with open(OUTPUT_FILE, "w") as f:
+            for item in final_dataset:
+                f.write(json.dumps(item) + "\n")
+        print("Done!")
+        return
+
     print(f"\n[Pass 1/2] Loading Finance Model from {MODEL_PATH}...")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_PATH,
@@ -621,12 +654,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable debug mode: Stop after the first failed reflection generation",
     )
+    parser.add_argument(
+        "--deterministic-only",
+        action="store_true",
+        help="Enable deterministic mode: Generate dataset with only ground truth scores, skipping LLM analysis.",
+    )
 
     args = parser.parse_args()
 
     # Update globals
     ENABLE_DOWNLOAD = args.enable_download
     DEBUG_MODE = args.debug
+    DETERMINISTIC_ONLY = args.deterministic_only
     MODEL_PATH = args.model_path
     OUTPUT_FILE = args.output_file
     NEWS_FILE = args.news_file
