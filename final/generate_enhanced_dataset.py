@@ -17,6 +17,7 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 DEFAULT_MODEL_PATH = "/home/dragon/AI/llama-3-8B-4bit-finance"
 DEFAULT_REFLECTION_MODEL_PATH = "/home/dragon/.cache/modelscope/hub/models/unsloth/Meta-Llama-3___1-8B-Instruct-unsloth-bnb-4bit"
 DEFAULT_OUTPUT_FILE = "final/gold_llm_enhanced_train.jsonl"
+DEFAULT_DETERMINISTIC_OUTPUT_FILE = "final/gold_pure_deterministic_train.jsonl"
 DEFAULT_NEWS_FILE = "final/gold_news_10years.csv"
 DEFAULT_CACHE_FILE = "commodity_data/gold.csv"
 DEFAULT_START_DATE = "2020-01-01"
@@ -667,7 +668,12 @@ if __name__ == "__main__":
     DEBUG_MODE = args.debug
     DETERMINISTIC_ONLY = args.deterministic_only
     MODEL_PATH = args.model_path
-    OUTPUT_FILE = args.output_file
+    
+    if DETERMINISTIC_ONLY and args.output_file == DEFAULT_OUTPUT_FILE:
+        OUTPUT_FILE = DEFAULT_DETERMINISTIC_OUTPUT_FILE
+    else:
+        OUTPUT_FILE = args.output_file
+
     NEWS_FILE = args.news_file
     CACHE_FILE = args.cache_file
     START_DATE = args.start_date
