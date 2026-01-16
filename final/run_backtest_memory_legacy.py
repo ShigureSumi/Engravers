@@ -557,7 +557,13 @@ News:
     for strat in strat_cols:
         s_pos = df_res[strat]
         aligned_gold = test_gold_returns.loc[s_pos.index]
-        strat_ret = s_pos * aligned_gold
+        
+        # Calculate Turnover and Fees
+        # Assume starting position is 0
+        pos_change = s_pos.diff().fillna(s_pos)
+        costs = pos_change.abs() * args.fee
+        
+        strat_ret = (s_pos * aligned_gold) - costs
         strat_cum = (1 + strat_ret.fillna(0)).cumprod()
 
         final_ret = strat_cum.iloc[-1] - 1
@@ -664,5 +670,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--original-csv", type=str, default=DEFAULT_ORIGINAL_STRATEGY_CSV
     )
+    parser.add_argument("--fee", type=float, default=0.01, help="Transaction fee per trade (default: 0.01 = 1%)")
     args = parser.parse_args()
     run_multistrat_backtest(args)
