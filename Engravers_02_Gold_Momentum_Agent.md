@@ -1,5 +1,5 @@
 ---
-Title: From Sentiment to Strategy: Engineering a "Memory-Augmented" Momentum Agent for Gold Futures
+Title: Gold Futures: Engineering an LLM Momentum Agent with Selective Memory
 Date: 2026-01-16
 Category: Engineering Report
 Tags: GenAI, Macro Trading, Llama-3, Financial Engineering
