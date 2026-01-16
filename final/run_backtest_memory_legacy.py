@@ -521,7 +521,7 @@ News:
             strats["S25_Quality"] = 0
 
         # --- 3. Fee-Aware & Long-Bias Strategies (S26-S30) ---
-        
+
         # S26: Long Only A (Avoid Short Fees & Trend Fight)
         strats["S26_Long_Only_A"] = 1 if score_A > 0 else 0
 
@@ -536,12 +536,12 @@ News:
             strats["S28_Conservative_Trend"] = 0
 
         # S29: Buy The Fear (Contrarian Long)
-        # If sentiment is negative but Trend is still UP (Price > SMA50), 
+        # If sentiment is negative but Trend is still UP (Price > SMA50),
         # it might be a temporary pullback news. Buy.
         # Also Buy if Sentiment is Positive.
         # Only go to Cash if Trend breaks or Sentiment is catastrophic.
         if is_uptrend:
-            if score_D > -2: # Buy unless news is terrible
+            if score_D > -2:  # Buy unless news is terrible
                 strats["S29_Buy_The_Fear"] = 1
             else:
                 strats["S29_Buy_The_Fear"] = 0
@@ -607,20 +607,20 @@ News:
     for strat in strat_cols:
         s_pos = df_res[strat]
         aligned_gold = test_gold_returns.loc[s_pos.index]
-        
+
         # Calculate Turnover and Fees
         # Assume starting position is 0
         prev_pos = s_pos.shift(1).fillna(0)
-        
+
         # Decompose changes into Long-side (Positive domain) and Short-side (Negative domain) activity
         # 1. Volume executed in the positive range (Opening/Closing Longs)
         long_vol = (s_pos.clip(lower=0) - prev_pos.clip(lower=0)).abs()
-        
+
         # 2. Volume executed in the negative range (Opening/Closing Shorts)
         short_vol = (s_pos.clip(upper=0) - prev_pos.clip(upper=0)).abs()
-        
+
         costs = (long_vol * args.long_fee) + (short_vol * args.short_fee)
-        
+
         strat_ret = (s_pos * aligned_gold) - costs
         strat_cum = (1 + strat_ret.fillna(0)).cumprod()
 
@@ -728,7 +728,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--original-csv", type=str, default=DEFAULT_ORIGINAL_STRATEGY_CSV
     )
-    parser.add_argument("--long-fee", type=float, default=0.00333, help="Transaction fee per LONG trade (default: 0.00333)")
-    parser.add_argument("--short-fee", type=float, default=0.0055, help="Transaction fee per SHORT trade (default: 0.0055)")
+    parser.add_argument(
+        "--long-fee",
+        type=float,
+        default=0,
+        help="Transaction fee per LONG trade (default: 0)",
+    )
+    parser.add_argument(
+        "--short-fee",
+        type=float,
+        default=0,
+        hep="Transaction fee per SHORT trade (default: 0)",
+    )
     args = parser.parse_args()
     run_multistrat_backtest(args)
