@@ -123,7 +123,7 @@ The chart below highlights the strategy's behavior.
 *   **Drawdown Management:** This is most visible in **mid-November**. The Original strategy (Green) suffers a sharp drawdown, dropping significantly as it gets caught on the wrong side of market volatility. During this exact period, S21 (Blue) remains remarkably flat and stable. The memory filter correctly identified the noise and kept the strategy neutral, preserving capital.
 *   **The Breakout:** Finally, notice the **Late December** surge. While the Original strategy plateaus and begins to dip, S21 identifies a fresh momentum signal and breaks out to a new all-time high (~1.34). This ability to stay flat during chop (Nov) and aggressive during trends (Dec) is the hallmark of a successful momentum agent.
 
-![Strategies Comparison Chart](final/q4_multistrat_chart.png)
+![Strategies Comparison Chart]({static}/images/Engravers_02_q4_multistrat_chart.png)
 
 ## 5. Conclusion
 

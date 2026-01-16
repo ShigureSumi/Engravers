@@ -65,7 +65,7 @@ for kw in KEYWORDS:
 ```
 After deduplication, we collected a large number of news articles. Each tagged with date, topic, and headline—capturing both high-impact events (e.g., 2020 Fed emergency rate cuts) and subtle narrative shifts (e.g., 2025 inflation concerns).
 
-![Picture showing Powell](Engravers_01_data.png)
+![Picture showing Powell]({static}/images/Engravers_01_data.png)
 
 ### 2.2 Labeling Logic: Eliminating Look-Ahead Bias
 Financial data is noisy, so we implemented a **Next-Day Return (T+1)** labeling strategy to ensure the model only uses information available at prediction time. The core logic lies in our granular scoring function and date alignment:
