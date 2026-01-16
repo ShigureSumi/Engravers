@@ -520,6 +520,45 @@ News:
         else:
             strats["S25_Quality"] = 0
 
+        # --- 3. Fee-Aware & Long-Bias Strategies (S26-S30) ---
+        
+        # S26: Long Only A (Avoid Short Fees & Trend Fight)
+        strats["S26_Long_Only_A"] = 1 if score_A > 0 else 0
+
+        # S27: Long Only D (Avoid Short Fees & Trend Fight)
+        strats["S27_Long_Only_D"] = 1 if score_D > 0 else 0
+
+        # S28: Conservative Trend (Long Only)
+        # Only buy if Sentiment is positive AND Price is above SMA50
+        if score_D > 0 and is_uptrend:
+            strats["S28_Conservative_Trend"] = 1
+        else:
+            strats["S28_Conservative_Trend"] = 0
+
+        # S29: Buy The Fear (Contrarian Long)
+        # If sentiment is negative but Trend is still UP (Price > SMA50), 
+        # it might be a temporary pullback news. Buy.
+        # Also Buy if Sentiment is Positive.
+        # Only go to Cash if Trend breaks or Sentiment is catastrophic.
+        if is_uptrend:
+            if score_D > -2: # Buy unless news is terrible
+                strats["S29_Buy_The_Fear"] = 1
+            else:
+                strats["S29_Buy_The_Fear"] = 0
+        else:
+            strats["S29_Buy_The_Fear"] = 0
+
+        # S30: HODL Plus (Core Satellite)
+        # Maintain 50% exposure always (Core).
+        # Add 50% if Sentiment D > 0 (Satellite).
+        # Cut Core if Sentiment D < -3 (Emergency Brake).
+        if score_D < -3:
+            strats["S30_HODL_Plus"] = 0
+        elif score_D > 0:
+            strats["S30_HODL_Plus"] = 1.0
+        else:
+            strats["S30_HODL_Plus"] = 0.5
+
         # Update State
         prev_score_A = score_A
         prev_score_D = score_D
